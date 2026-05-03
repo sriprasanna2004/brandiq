@@ -187,13 +187,13 @@ async def list_leads(status: str = None, limit: int = 50):
 async def get_kpis():
     from sqlalchemy import select, func
     from src.database import AsyncSessionLocal
-    from src.models import Post, PostStatus, Lead, WhatsappSequence, SequenceStatus, AdaptiqTrial
+    from src.models import Post, PostStatus, Lead, LeadStatus, WhatsappSequence, SequenceStatus, AdaptiqTrial
     from datetime import timezone
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     async with AsyncSessionLocal() as db:
         posts_today   = await db.scalar(select(func.count(Post.id)).where(Post.posted_at >= today, Post.status == PostStatus.posted)) or 0
         new_leads     = await db.scalar(select(func.count(Lead.id)).where(Lead.created_at >= today)) or 0
-        hot_leads     = await db.scalar(select(func.count(Lead.id)).where(Lead.status == "hot", Lead.created_at >= today)) or 0
+        hot_leads     = await db.scalar(select(func.count(Lead.id)).where(Lead.status == LeadStatus.hot, Lead.created_at >= today)) or 0
         wa_sent       = await db.scalar(select(func.count(WhatsappSequence.id)).where(WhatsappSequence.sent_at >= today, WhatsappSequence.status == SequenceStatus.sent)) or 0
         trials        = await db.scalar(select(func.count(AdaptiqTrial.id)).where(AdaptiqTrial.trial_start >= today)) or 0
         total_leads   = await db.scalar(select(func.count(Lead.id))) or 0
@@ -236,7 +236,7 @@ async def get_agent_status():
 async def get_live_feed():
     from sqlalchemy import select, or_
     from src.database import AsyncSessionLocal
-    from src.models import AgentJob, Lead, Post, PostStatus
+    from src.models import AgentJob, Lead, LeadStatus, Post, PostStatus
     from datetime import timezone, timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=12)
     events = []
@@ -244,7 +244,7 @@ async def get_live_feed():
         posts = await db.execute(select(Post).where(Post.posted_at >= cutoff, Post.status == PostStatus.posted).order_by(Post.posted_at.desc()).limit(5))
         for p in posts.scalars().all():
             events.append({"type": "post", "icon": "✓", "text": f"Post published — \"{p.caption_a[:40]}...\"", "time": p.posted_at.isoformat(), "color": "#00e5c3"})
-        leads = await db.execute(select(Lead).where(Lead.created_at >= cutoff, Lead.status == "hot").order_by(Lead.created_at.desc()).limit(5))
+        leads = await db.execute(select(Lead).where(Lead.created_at >= cutoff, Lead.status == LeadStatus.hot).order_by(Lead.created_at.desc()).limit(5))
         for l in leads.scalars().all():
             events.append({"type": "lead", "icon": "💬", "text": f"Hot lead — @{l.ig_handle}", "time": l.created_at.isoformat(), "color": "#9d6fff"})
     events.sort(key=lambda x: x["time"], reverse=True)
@@ -272,12 +272,12 @@ async def get_reach():
 async def get_funnels():
     from sqlalchemy import select, func
     from src.database import AsyncSessionLocal
-    from src.models import Lead, AdaptiqTrial, PostAnalytics
+    from src.models import Lead, LeadStatus, AdaptiqTrial, PostAnalytics
     from datetime import timezone
     today = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     async with AsyncSessionLocal() as db:
         total_leads = await db.scalar(select(func.count(Lead.id)).where(Lead.created_at >= today)) or 0
-        hot_leads = await db.scalar(select(func.count(Lead.id)).where(Lead.status == "hot", Lead.created_at >= today)) or 0
+        hot_leads = await db.scalar(select(func.count(Lead.id)).where(Lead.status == LeadStatus.hot, Lead.created_at >= today)) or 0
         trials = await db.scalar(select(func.count(AdaptiqTrial.id)).where(AdaptiqTrial.trial_start >= today)) or 0
         converted = await db.scalar(select(func.count(AdaptiqTrial.id)).where(AdaptiqTrial.converted_at.isnot(None), AdaptiqTrial.trial_start >= today)) or 0
         total_reach = await db.scalar(select(func.sum(PostAnalytics.reach)).where(PostAnalytics.recorded_at >= today)) or 0
