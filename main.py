@@ -12,8 +12,8 @@ from loguru import logger
 # ---------------------------------------------------------------------------
 # Sentry
 # ---------------------------------------------------------------------------
-sentry_dsn = os.getenv("SENTRY_DSN")
-if sentry_dsn:
+sentry_dsn = os.getenv("SENTRY_DSN", "")
+if sentry_dsn and sentry_dsn != "REPLACE_ME":
     sentry_sdk.init(
         dsn=sentry_dsn,
         environment=os.getenv("ENVIRONMENT", "development"),
