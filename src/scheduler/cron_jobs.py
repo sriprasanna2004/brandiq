@@ -118,7 +118,8 @@ def _trigger_trial_sequences():
     asyncio.run(_run())
 
 
-def _trigger_nurture_sequences():    """10 AM — fire nurture tasks for leads at day 1/3/7/14 who have a phone number."""
+def _trigger_nurture_sequences():
+    """10 AM — fire nurture tasks for leads at day 1/3/7/14 who have a phone number."""
     from src.scheduler.tasks import run_lead_crew_task
 
     async def _query():
