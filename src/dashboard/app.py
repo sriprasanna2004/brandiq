@@ -10,7 +10,7 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 st.set_page_config(layout="wide", page_title="BrandIQ", page_icon="🎯")
 
-API = os.getenv("API_URL", "http://api:8000")
+API = os.getenv("API_URL", "https://brandiq-production-36b6.up.railway.app")
 
 st.markdown("""
 <style>
