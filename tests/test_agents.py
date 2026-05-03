@@ -23,7 +23,7 @@ def test_content_writer_agent():
         "best_post_time": "7:00 AM IST"
     }"""
 
-    with patch("langchain_anthropic.ChatAnthropic.invoke", return_value=mock_response):
+    with patch("langchain_groq.ChatGroq.invoke", return_value=mock_response):
         from src.agents.content_writer_agent import run_content_writer_agent, PostContent
         result = run_content_writer_agent("UPSC Prelims strategy", "motivational")
 
@@ -46,7 +46,7 @@ def test_lead_capture_agent():
         "should_notify_admin": true
     }"""
 
-    with patch("langchain_anthropic.ChatAnthropic.invoke", return_value=mock_response):
+    with patch("langchain_groq.ChatGroq.invoke", return_value=mock_response):
         from src.agents.lead_capture_agent import run_lead_capture_agent, LeadScore
         result = run_lead_capture_agent("what are the fees for batch?", "test_user_123")
 

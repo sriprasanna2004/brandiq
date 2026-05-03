@@ -3,7 +3,7 @@ import json
 from datetime import date
 from typing import Optional
 from pydantic import BaseModel
-from langchain_anthropic import ChatAnthropic
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
@@ -19,10 +19,10 @@ class ContentPlan(BaseModel):
     topics: list[dict]  # 7 dicts: day, topic, content_type, tone
 
 
-def _get_llm() -> ChatAnthropic:
-    return ChatAnthropic(
-        model="claude-sonnet-4-20250514",
-        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
+def _get_llm() -> ChatGroq:
+    return ChatGroq(
+        model="llama-3.3-70b-versatile",
+        groq_api_key=os.getenv("GROQ_API_KEY"),
         temperature=0.7,
     )
 
