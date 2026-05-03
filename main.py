@@ -306,6 +306,10 @@ async def get_calendar():
             calendar[day] = []
         calendar[day].append({"caption": p.caption_a[:30], "platform": p.platform.value, "status": p.status.value})
     return calendar
+
+
+@app.get("/stats/agent-jobs")
+async def get_agent_jobs(limit: int = 20):
     from sqlalchemy import select
     from src.database import AsyncSessionLocal
     from src.models import AgentJob

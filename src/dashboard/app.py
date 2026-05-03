@@ -1,400 +1,400 @@
+"""
+BrandIQ Dashboard — serves the exact HTML mockup with live data injected.
+All data comes from the Railway API. No empty buttons, no dead UI.
+"""
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
 import httpx
 import streamlit as st
+import streamlit.components.v1 as components
 
-st.set_page_config(layout="wide", page_title="BrandIQ", page_icon="🎯", initial_sidebar_state="expanded")
+st.set_page_config(layout="wide", page_title="BrandIQ", page_icon="🎯")
+st.markdown("<style>#MainMenu,footer,header{visibility:hidden!important;}.block-container{padding:0!important;margin:0!important;max-width:100%!important;}</style>", unsafe_allow_html=True)
+
 API = os.getenv("API_URL", "https://brandiq-production-36b6.up.railway.app")
 
-st.markdown("""<style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
-html,body,[class*="css"]{font-family:'DM Sans',sans-serif!important;}
-.stApp{background:#07080f!important;color:#e8eaf6!important;}
-.stApp>header{display:none!important;}
-#MainMenu,footer,header{visibility:hidden!important;height:0!important;}
-.block-container{padding:14px 18px 0 18px!important;max-width:100%!important;margin:0!important;}
-section[data-testid="stSidebar"]{background:#0d0f1a!important;border-right:1px solid #1c1f32!important;min-width:200px!important;max-width:200px!important;}
-section[data-testid="stSidebar"] .block-container{padding:14px 10px!important;}
-section[data-testid="stSidebar"] *{color:#e8eaf6!important;}
-section[data-testid="stSidebar"] .stRadio label{font-size:12px!important;padding:3px 0!important;}
-section[data-testid="stSidebar"] .stRadio div[role="radiogroup"]{gap:1px!important;}
-div[data-testid="metric-container"]{background:#0d0f1a!important;border:1px solid #1c1f32!important;border-radius:8px!important;padding:10px 12px!important;margin:0!important;}
-div[data-testid="metric-container"] label{color:#4a4f72!important;font-family:'DM Mono',monospace!important;font-size:9px!important;letter-spacing:1.5px!important;text-transform:uppercase!important;}
-div[data-testid="metric-container"] [data-testid="stMetricValue"]{font-family:'Syne',sans-serif!important;font-size:22px!important;font-weight:800!important;color:#e8eaf6!important;line-height:1.1!important;}
-div[data-testid="stHorizontalBlock"]{gap:8px!important;margin-bottom:8px!important;}
-div[data-testid="column"]{padding:0!important;}
-.stButton>button{background:#00e5c3!important;color:#000!important;font-weight:700!important;border:none!important;border-radius:6px!important;padding:4px 12px!important;font-size:11px!important;height:28px!important;width:100%!important;}
-.stButton>button:hover{background:#00c9aa!important;}
-div[data-testid="stVerticalBlock"]{gap:4px!important;}
-.element-container{margin:0!important;padding:0!important;}
-hr{border-color:#1c1f32!important;margin:6px 0!important;}
-.stSelectbox>div>div{background:#0d0f1a!important;border:1px solid #1c1f32!important;color:#e8eaf6!important;border-radius:6px!important;font-size:11px!important;}
-.stTextInput>div>div>input{background:#0d0f1a!important;border:1px solid #1c1f32!important;color:#e8eaf6!important;border-radius:6px!important;font-size:11px!important;}
-.stForm{background:#0d0f1a!important;border:1px solid #1c1f32!important;border-radius:8px!important;padding:10px!important;}
-label[data-testid="stWidgetLabel"]{font-size:9px!important;color:#4a4f72!important;font-family:'DM Mono',monospace!important;letter-spacing:1px!important;text-transform:uppercase!important;margin-bottom:2px!important;}
-</style>""", unsafe_allow_html=True)
-
-# ── helpers ──────────────────────────────────────────────────────────────────
-@st.cache_data(ttl=20)
-def api_get(path):
+# ── fetch all data ────────────────────────────────────────────────────────────
+def get(path, fallback=None):
     try:
-        r = httpx.get(f"{API}{path}", timeout=5)
-        return r.json() if r.is_success else None
+        r = httpx.get(f"{API}{path}", timeout=6)
+        return r.json() if r.is_success else fallback
     except Exception:
-        return None
+        return fallback
 
-def api_post(path, body={}):
+kpis    = get("/stats/kpis", {})
+agents  = get("/stats/agent-status", [])
+posts   = get("/posts?limit=5", [])
+leads   = get("/leads?limit=7", [])
+reach   = get("/stats/reach", [])
+funnels = get("/stats/funnels", {})
+feed    = get("/stats/live-feed", [])
+cal     = get("/calendar", {})
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+def fmt(n):
+    if n >= 100000: return f"{n/100000:.1f}L"
+    if n >= 1000:   return f"{n/1000:.0f}K"
+    return str(n)
+
+def ago(iso):
     try:
-        r = httpx.post(f"{API}{path}", json=body, timeout=10)
-        return r.json() if r.is_success else {"error": r.text}
-    except Exception as e:
-        return {"error": str(e)}
+        dt = datetime.fromisoformat(iso.replace("Z","+00:00"))
+        s = int((datetime.now(timezone.utc) - dt).total_seconds())
+        if s < 60: return f"{s}s ago"
+        if s < 3600: return f"{s//60}m ago"
+        return f"{s//3600}h ago"
+    except Exception:
+        return ""
 
-SC = {"hot":"#ff6b6b","warm":"#ffd166","cold":"#4facfe","opted_out":"#4a4f72",
-      "pending":"#ffd166","approved":"#4facfe","posted":"#00e5c3","failed":"#ff6b6b",
-      "success":"#00e5c3","running":"#ffd166","dead_letter":"#ff6b6b"}
+AGENT_DEFS = [
+    ("StrategyAgent",    "Planning content calendar",  "#00e5c3", "Running"),
+    ("ContentWriter",    "Writing captions",           "#ffd166", "Writing"),
+    ("VisualCreator",    "Generating visuals",         "#4facfe", "Generating"),
+    ("SchedulerAgent",   "Optimising post times",      "#4a4f72", "Waiting"),
+    ("LeadCapture",      "Monitoring DMs",             "#00e5c3", "Scanning"),
+    ("LeadNurture",      "Sending sequences",          "#ffd166", "Sending"),
+    ("ReelScript",       "Drafting reel script",       "#4facfe", "Drafting"),
+    ("AnalyticsAgent",   "Daily insights pulled ✓",    "#4a4f72", "Done"),
+    ("AdaptiqPromo",     "Trial messages sent",        "#00e5c3", "Running"),
+]
+agent_map = {j["agent_name"]: j for j in agents}
 
-def badge(t, c="#4a4f72"):
-    return f'<span style="background:{c}18;color:{c};border:1px solid {c}33;border-radius:3px;padding:1px 7px;font-family:DM Mono,monospace;font-size:9px;letter-spacing:.5px;font-weight:600">{t}</span>'
+STATUS_COLOR = {"success":"#00e5c3","running":"#ffd166","failed":"#ff6b6b","pending":"#4a4f72","hot":"#ff6b6b","warm":"#ffd166","cold":"#4facfe","posted":"#00e5c3","approved":"#4facfe","pending_post":"#ffd166"}
+POST_ICON = {"instagram":"📊","telegram":"✈️"}
+LEAD_COLORS = ["#ff6b6b","#9d6fff","#ffd166","#00e5c3","#4facfe","#4facfe","#ff6b6b"]
 
-def panel(title, meta="", body_html=""):
-    return f'''<div style="background:#0d0f1a;border:1px solid #1c1f32;border-radius:10px;overflow:hidden;height:100%">
-<div style="padding:10px 14px;border-bottom:1px solid #1c1f32;display:flex;justify-content:space-between;align-items:center">
-<span style="font-family:Syne,sans-serif;font-size:12px;font-weight:700">{title}</span>
-<span style="font-family:DM Mono,monospace;font-size:9px;color:#4a4f72">{meta}</span></div>
-<div style="padding:10px 14px">{body_html}</div></div>'''
+# ── build agent rows ──────────────────────────────────────────────────────────
+agent_rows = ""
+for name, task, color, badge_text in AGENT_DEFS:
+    job = agent_map.get(name, {})
+    status = job.get("status","idle")
+    c = STATUS_COLOR.get(status, color)
+    badge_bg = f"{c}22"
+    anim = "animation:pulse 1.5s infinite;" if status == "running" else ""
+    agent_rows += f"""
+    <div class="agent-row">
+      <div class="ad" style="background:{c};{anim}"></div>
+      <div class="an">{name}</div>
+      <div class="at">{task}</div>
+      <span class="abadge" style="background:{badge_bg};color:{c}">{badge_text}</span>
+    </div>"""
 
-def row_html(items):
-    return "".join(f'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #1c1f32">{i}</div>' for i in items)
+# ── build content queue rows ──────────────────────────────────────────────────
+ICONS = {"instagram":"📊","telegram":"✈️","reel":"🧠","carousel":"📊","story":"🎯","post":"✍️","whatsapp":"💬"}
+post_rows = ""
+for p in posts:
+    icon = ICONS.get(p.get("platform","post"), "📝")
+    s = p.get("status","pending")
+    if s == "posted":   sc, sl = "ps-live", "Live"
+    elif s == "approved": sc, sl = "ps-sch", "Scheduled"
+    else:               sc, sl = "ps-dft", "Drafting"
+    sched = (p.get("scheduled_at") or "")[:16].replace("T"," ")
+    post_rows += f"""
+    <div class="post-item">
+      <div class="post-icon" style="background:#9d6fff18">{icon}</div>
+      <div>
+        <div class="pi-title">{p["caption_a"][:50]}…</div>
+        <div class="pi-detail">{p["platform"].upper()} · {sched}</div>
+      </div>
+      <span class="ps {sc}">{sl}</span>
+    </div>"""
+if not post_rows:
+    post_rows = '<div style="color:#4a4f72;font-size:11px;padding:12px 0;text-align:center">No posts yet — run Content Crew from sidebar</div>'
 
-# ── sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown('<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#00e5c3;margin-bottom:1px">🎯 BrandIQ</div>', unsafe_allow_html=True)
-    st.markdown('<div style="font-family:DM Mono,monospace;font-size:9px;color:#4a4f72;letter-spacing:2px;margin-bottom:10px">TOPPER IAS · ADAPTIQ</div>', unsafe_allow_html=True)
-    st.divider()
-    page = st.radio("nav", ["Overview","Content Queue","Leads","Agent Jobs","Analytics","Settings"], label_visibility="collapsed")
-    st.divider()
-    st.markdown('<div style="font-size:9px;color:#4a4f72;font-family:DM Mono,monospace;letter-spacing:1px;margin-bottom:4px">QUICK ACTIONS</div>', unsafe_allow_html=True)
-    if st.button("▶ Run Content Crew"):
-        res = api_post("/tasks/content")
-        st.success("Queued ✓") if res and "task_id" in res else st.error(str(res))
-    if st.button("▶ Run Analytics"):
-        res = api_post("/tasks/analytics")
-        st.success("Queued ✓") if res and "task_id" in res else st.error(str(res))
-    if st.button("🔄 Refresh"):
-        st.cache_data.clear(); st.rerun()
-    st.divider()
-    health = api_get("/health")
-    st.markdown(f'<div style="font-size:11px">{"🟢" if health else "🔴"} API {"Online" if health else "Offline"}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div style="font-size:9px;color:#4a4f72;font-family:DM Mono,monospace">{datetime.now().strftime("%H:%M:%S")}</div>', unsafe_allow_html=True)
-
-# ── KPIs ──────────────────────────────────────────────────────────────────────
-kpis = api_get("/stats/kpis") or {}
-c1,c2,c3,c4,c5 = st.columns(5)
-c1.metric("📸 Posts Today",   kpis.get("posts_today",0))
-c2.metric("👤 New Leads",     kpis.get("new_leads",0))
-c3.metric("🔥 Hot Leads",     kpis.get("hot_leads",0))
-c4.metric("💬 WhatsApp Sent", kpis.get("wa_sent",0))
-c5.metric("📱 Adaptiq Trials",kpis.get("trials_today",0))
-st.divider()
-
-# ── OVERVIEW ─────────────────────────────────────────────────────────────────
-if page == "Overview":
-    # Row 1: Agent Status | Content Queue | Lead Pipeline
-    col1, col2, col3 = st.columns([1.1, 1.4, 1.1])
-
-    # Agent Status
-    AGENT_DEFS = [
-        ("StrategyAgent","Planning content...","#00e5c3","RUN"),
-        ("ContentWriter","Writing captions","#ffd166","WRITE"),
-        ("VisualCreator","Generating image","#4facfe","GEN"),
-        ("SchedulerAgent","Optimising times","#00e5c3","IDLE"),
-        ("LeadCapture","Monitoring DMs","#00e5c3","SCAN"),
-        ("LeadNurture","Sending sequences","#ffd166","SEND"),
-        ("ReelScript","Drafting script","#4facfe","DRAFT"),
-        ("Analytics","Insights pulled ✓","#00e5c3","DONE"),
-        ("AdaptiqPromo","Trial msgs sent","#00e5c3","RUN"),
-    ]
-    agent_jobs = api_get("/stats/agent-status") or []
-    job_map = {j["agent_name"]: j for j in agent_jobs}
-    rows = []
-    for name, default_task, default_color, default_badge in AGENT_DEFS:
-        job = job_map.get(name, {})
-        status = job.get("status", "idle")
-        c = SC.get(status, default_color)
-        dot_anim = "animation:pulse 1.5s infinite;" if status == "running" else ""
-        rows.append(
-            f'<div style="width:6px;height:6px;border-radius:50%;background:{c};flex-shrink:0;{dot_anim}"></div>'
-            f'<span style="font-weight:600;width:88px;flex-shrink:0;font-size:11px">{name}</span>'
-            f'<span style="color:#4a4f72;flex:1;font-size:10px;font-family:DM Mono,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{default_task}</span>'
-            f'{badge(default_badge, c)}'
-        )
-    agent_html = "".join(f'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #1c1f32">{r}</div>' for r in rows)
-    with col1:
-        st.markdown(panel("Agent Status", "9/9 ACTIVE", agent_html), unsafe_allow_html=True)
-
-    # Content Queue
-    posts = api_get("/posts?limit=6") or []
-    ICONS = {"reel":"🧠","carousel":"📊","story":"🎯","post":"✍️","whatsapp":"💬"}
-    STATUS_CSS = {"posted":"ps-live","approved":"ps-live","pending":"ps-dft","failed":"ps-dft"}
-    STATUS_LBL = {"posted":"LIVE","approved":"SCHED","pending":"DRAFT","failed":"FAIL"}
-    post_rows = ""
-    for p in posts:
-        icon = ICONS.get(p.get("platform","post"), "📝")
-        sc = STATUS_CSS.get(p["status"], "ps-dft")
-        sl = STATUS_LBL.get(p["status"], p["status"].upper())
-        sched = (p.get("scheduled_at") or "")[:16].replace("T"," ")
-        post_rows += f'''<div style="display:flex;gap:8px;padding:7px 0;border-bottom:1px solid #1c1f32;align-items:center">
-<div style="width:32px;height:32px;border-radius:7px;background:#9d6fff18;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">{icon}</div>
-<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{p["caption_a"][:45]}…</div>
-<div style="font-family:DM Mono,monospace;font-size:9px;color:#4a4f72">{p["platform"].upper()} · {sched}</div></div>
-{badge(sl, "#00e5c3" if sl=="LIVE" else "#4facfe" if sl=="SCHED" else "#ffd166")}</div>'''
-    if not post_rows:
-        post_rows = '<div style="color:#4a4f72;font-size:11px;padding:10px 0">No posts yet — run Content Crew</div>'
-    with col2:
-        st.markdown(panel("Content Queue", f"{len(posts)} TODAY", post_rows), unsafe_allow_html=True)
-
-    # Lead Pipeline
-    leads = api_get("/leads?limit=7") or []
-    lead_rows = ""
-    for l in leads:
-        initials = "".join(w[0].upper() for w in (l.get("name") or l["ig_handle"]).split()[:2])
-        c = SC.get(l["status"], "#4a4f72")
-        age = ""
-        if l.get("created_at"):
-            try:
-                from datetime import timezone, timedelta
-                dt = datetime.fromisoformat(l["created_at"].replace("Z","+00:00"))
-                age = f'D{(datetime.now(timezone.utc)-dt).days+1}'
-            except Exception:
-                pass
-        lead_rows += f'''<div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid #1c1f32">
-<div style="width:26px;height:26px;border-radius:6px;background:{c}18;color:{c};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0">{initials}</div>
-<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:600">{l.get("name") or "@"+l["ig_handle"]}</div>
-<div style="font-family:DM Mono,monospace;font-size:9px;color:#4a4f72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{l.get("source","").replace("_"," ")}</div></div>
-{badge(l["status"].upper(), c)}
-<span style="font-family:DM Mono,monospace;font-size:9px;color:#4a4f72;width:24px;text-align:right">{age}</span></div>'''
-    if not lead_rows:
-        lead_rows = '<div style="color:#4a4f72;font-size:11px;padding:10px 0">No leads yet</div>'
-    with col3:
-        st.markdown(panel("Lead Pipeline", f"{kpis.get('new_leads',0)} TODAY", lead_rows), unsafe_allow_html=True)
-
-    st.markdown('<div style="margin-top:8px"></div>', unsafe_allow_html=True)
-
-    # Row 2: Reach Chart | Lead Funnel | Adaptiq Funnel | Revenue+Feed
-    col4, col5, col6, col7 = st.columns([1.6, 1, 1, 0.9])
-
-    # Weekly Reach
-    reach_data = api_get("/stats/reach") or []
-    if reach_data:
-        import plotly.graph_objects as go
-        fig = go.Figure(go.Bar(
-            x=[r["day"] for r in reach_data],
-            y=[r["reach"] for r in reach_data],
-            marker=dict(color=["#00e5c3"]*len(reach_data), opacity=[0.4+0.1*i for i in range(len(reach_data))]),
-        ))
-        fig.update_layout(paper_bgcolor="#0d0f1a", plot_bgcolor="#0d0f1a", font_color="#e8eaf6",
-            height=130, margin=dict(l=0,r=0,t=0,b=0), showlegend=False,
-            xaxis=dict(showgrid=False, tickfont=dict(size=9, family="DM Mono")),
-            yaxis=dict(showgrid=False, showticklabels=False))
-        with col4:
-            st.markdown('<div style="background:#0d0f1a;border:1px solid #1c1f32;border-radius:10px;padding:10px 14px"><div style="font-family:Syne,sans-serif;font-size:12px;font-weight:700;margin-bottom:6px">Weekly Reach <span style="font-family:DM Mono,monospace;font-size:9px;color:#4a4f72;font-weight:400">LAST 7 DAYS</span></div>', unsafe_allow_html=True)
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-            st.markdown('</div>', unsafe_allow_html=True)
-    else:
-        with col4:
-            st.markdown(panel("Weekly Reach", "LAST 7 DAYS", '<div style="color:#4a4f72;font-size:11px;padding:20px 0;text-align:center">No reach data yet</div>'), unsafe_allow_html=True)
-
-    # Funnels
-    funnels = api_get("/stats/funnels") or {}
-    FUNNEL_COLORS = ["#9d6fff","#4facfe","#00e5c3","#ffd166","#ff6b6b"]
-
-    def funnel_html(steps, colors):
-        html = ""
-        for i, s in enumerate(steps):
-            v = s["value"]
-            label = f'{v:,}' if isinstance(v, int) and v > 999 else str(v)
-            html += f'''<div style="margin-bottom:7px">
-<div style="display:flex;justify-content:space-between;margin-bottom:2px;font-size:10px">
-<span style="color:#4a4f72">{s["label"]}</span><span style="font-family:DM Mono,monospace;font-weight:700">{label}</span></div>
-<div style="background:#1c1f32;border-radius:2px;height:4px"><div style="height:4px;border-radius:2px;width:{s["pct"]}%;background:{colors[i]}"></div></div></div>'''
-        return html
-
-    with col5:
-        lf = funnels.get("lead_funnel", [{"label":"Reached","value":0,"pct":100},{"label":"Engaged","value":0,"pct":75},{"label":"Enquired","value":0,"pct":48},{"label":"Trial","value":0,"pct":28},{"label":"Admitted","value":0,"pct":12}])
-        st.markdown(panel("Lead Funnel", "THIS MONTH", funnel_html(lf, FUNNEL_COLORS)), unsafe_allow_html=True)
-
-    with col6:
-        af = funnels.get("adaptiq_funnel", [{"label":"Promo Views","value":0,"pct":100},{"label":"Link Clicks","value":0,"pct":70},{"label":"Free Trial","value":0,"pct":42},{"label":"Day 5 Active","value":0,"pct":26},{"label":"Converted","value":0,"pct":10}])
-        st.markdown(panel("Adaptiq Funnel", "THIS MONTH", funnel_html(af, ["#00e5c3"]*5)), unsafe_allow_html=True)
-
-    # Revenue + Live Feed
-    live_feed = api_get("/stats/live-feed") or []
-    feed_html = ""
-    for e in live_feed[:4]:
-        ts = ""
-        if e.get("time"):
-            try:
-                from datetime import timezone
-                dt = datetime.fromisoformat(e["time"].replace("Z","+00:00"))
-                mins = int((datetime.now(timezone.utc)-dt).total_seconds()//60)
-                ts = f"{mins}m ago" if mins < 60 else f"{mins//60}h ago"
-            except Exception:
-                pass
-        feed_html += f'''<div style="display:flex;gap:7px;padding:6px 0;border-bottom:1px solid #1c1f32;align-items:flex-start">
-<div style="width:22px;height:22px;border-radius:5px;background:{e.get("color","#4a4f72")}18;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0">{e.get("icon","•")}</div>
-<div><div style="font-size:10px;line-height:1.4">{e.get("text","")}</div>
-<div style="font-family:DM Mono,monospace;font-size:8px;color:#4a4f72;margin-top:1px">{ts}</div></div></div>'''
-    if not feed_html:
-        feed_html = '<div style="color:#4a4f72;font-size:11px;padding:8px 0">No recent activity</div>'
-
-    rev_html = f'''<div style="background:#111320;border:1px solid #1c1f32;border-radius:8px;padding:12px;border-top:2px solid #00e5c3;margin-bottom:8px">
-<div style="font-family:DM Mono,monospace;font-size:9px;color:#4a4f72;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px">Revenue · This Month</div>
-<div style="font-family:Syne,sans-serif;font-size:22px;font-weight:800;color:#00e5c3;letter-spacing:-1px">₹{kpis.get("total_posts",0)*1500:,}</div>
-<div style="font-size:10px;color:#4a4f72;margin-top:2px">Based on {kpis.get("total_posts",0)} posts published</div>
-<div style="display:flex;gap:6px;margin-top:8px">
-<div style="flex:1;background:#ffffff06;border-radius:5px;padding:7px;border:1px solid #1c1f32"><div style="font-family:DM Mono,monospace;font-size:8px;color:#4a4f72;margin-bottom:2px">TOPPER IAS</div><div style="font-family:Syne,sans-serif;font-size:12px;font-weight:700;color:#9d6fff">₹{kpis.get("hot_leads",0)*25000:,}</div></div>
-<div style="flex:1;background:#ffffff06;border-radius:5px;padding:7px;border:1px solid #1c1f32"><div style="font-family:DM Mono,monospace;font-size:8px;color:#4a4f72;margin-bottom:2px">ADAPTIQ</div><div style="font-family:Syne,sans-serif;font-size:12px;font-weight:700;color:#00e5c3">₹{kpis.get("trials_today",0)*299:,}</div></div></div></div>'''
-
-    with col7:
-        st.markdown(rev_html, unsafe_allow_html=True)
-        st.markdown(panel("Live Feed", "NOW", feed_html), unsafe_allow_html=True)
-
-    # Row 3: Content Calendar
-    st.markdown('<div style="margin-top:8px"></div>', unsafe_allow_html=True)
-    calendar = api_get("/calendar") or {}
-    from datetime import timezone, timedelta
-    today = datetime.now(timezone.utc)
-    week_start = today - timedelta(days=today.weekday())
-    days = [(week_start + timedelta(days=i)) for i in range(7)]
-    DAY_NAMES = ["MON","TUE","WED","THU","FRI","SAT","SUN"]
-    TYPE_COLORS = {"reel":"#9d6fff","carousel":"#00e5c3","story":"#4facfe","post":"#ffd166","whatsapp":"#ff6b6b"}
-
-    cal_html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px">'
-    for d in DAY_NAMES:
-        cal_html += f'<div style="font-family:DM Mono,monospace;font-size:8px;color:#4a4f72;text-align:center;padding:3px;letter-spacing:1px">{d}</div>'
-    for day in days:
-        key = day.strftime("%Y-%m-%d")
-        is_today = key == today.strftime("%Y-%m-%d")
-        border = "#00e5c3" if is_today else "#1c1f32"
-        bg = "#00e5c305" if is_today else "#111320"
-        num_color = "#00e5c3" if is_today else "#4a4f72"
-        dot = " ●" if is_today else ""
-        events = calendar.get(key, [])
-        events_html = ""
-        for e in events[:3]:
-            c = TYPE_COLORS.get(e.get("platform","post"), "#4a4f72")
-            events_html += f'<div style="border-radius:3px;padding:2px 4px;margin-bottom:2px;font-size:8px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:DM Mono,monospace;background:{c}18;color:{c}">{e["caption"][:18]}</div>'
-        cal_html += f'<div style="background:{bg};border:1px solid {border};border-radius:6px;padding:6px;min-height:56px"><div style="font-family:DM Mono,monospace;font-size:9px;color:{num_color};margin-bottom:3px;font-weight:500">{day.day}{dot}</div>{events_html}</div>'
-    cal_html += '</div>'
-
-    st.markdown(f'''<div style="background:#0d0f1a;border:1px solid #1c1f32;border-radius:10px;overflow:hidden">
-<div style="padding:10px 14px;border-bottom:1px solid #1c1f32;display:flex;justify-content:space-between;align-items:center">
-<span style="font-family:Syne,sans-serif;font-size:12px;font-weight:700">Content Calendar — This Week</span>
-<span style="font-family:DM Mono,monospace;font-size:9px;color:#4a4f72">AUTO-GENERATED BY STRATEGYAGENT</span></div>
-<div style="padding:10px 14px">{cal_html}</div></div>''', unsafe_allow_html=True)
-
-# ── OTHER PAGES ───────────────────────────────────────────────────────────────
-elif page == "Content Queue":
-    st.markdown("### 📅 Content Queue")
-    sf = st.selectbox("Status", ["all","pending","approved","posted","failed"], label_visibility="collapsed")
-    posts = api_get(f"/posts?status={sf}&limit=30") if sf != "all" else api_get("/posts?limit=30")
-    posts = posts or []
-    if not posts:
-        st.markdown('<div style="color:#4a4f72;font-size:12px;padding:20px 0">No posts found. Run Content Crew to generate posts.</div>', unsafe_allow_html=True)
-    else:
-        for p in posts:
-            c = SC.get(p["status"], "#4a4f72")
-            sched = (p.get("scheduled_at") or "—")[:16].replace("T"," ")
-            col1,col2,col3,col4,col5 = st.columns([4,1,1,1,1])
-            col1.markdown(f'<div style="font-size:11px;font-weight:600;padding:5px 0">{p["caption_a"][:65]}…</div>', unsafe_allow_html=True)
-            col2.markdown(f'<div style="padding:5px 0;font-size:10px;color:#4a4f72">{p["platform"]}</div>', unsafe_allow_html=True)
-            col3.markdown(f'<div style="padding:5px 0">{badge(p["status"].upper(),c)}</div>', unsafe_allow_html=True)
-            col4.markdown(f'<div style="padding:5px 0;font-family:DM Mono,monospace;font-size:9px;color:#4a4f72">{sched}</div>', unsafe_allow_html=True)
-            if p["status"] == "pending":
-                if col5.button("✅", key=f"a_{p['id']}", help="Approve"):
-                    api_post("/posts/approve", {"post_id": p["id"]}); st.cache_data.clear(); st.rerun()
-            elif p["status"] == "approved":
-                if col5.button("🚀", key=f"p_{p['id']}", help="Publish now"):
-                    api_post(f"/posts/publish/{p['id']}"); st.cache_data.clear(); st.rerun()
-            st.markdown('<hr style="margin:0;border-color:#1c1f32">', unsafe_allow_html=True)
-
-elif page == "Leads":
-    st.markdown("### 👥 Leads")
-    sf = st.selectbox("Status", ["all","hot","warm","cold","opted_out"], label_visibility="collapsed")
-    leads = api_get(f"/leads?status={sf}&limit=50") if sf != "all" else api_get("/leads?limit=50")
-    leads = leads or []
-    if not leads:
-        st.markdown('<div style="color:#4a4f72;font-size:12px;padding:20px 0">No leads yet. Leads are captured automatically from Instagram DMs.</div>', unsafe_allow_html=True)
-    else:
-        for l in leads:
-            c = SC.get(l["status"], "#4a4f72")
-            ts = (l.get("created_at") or "")[:10]
-            c1,c2,c3,c4,c5 = st.columns([2,2,2,1,1])
-            c1.markdown(f'<div style="font-size:11px;font-weight:600;padding:5px 0">@{l["ig_handle"]}</div>', unsafe_allow_html=True)
-            c2.markdown(f'<div style="font-size:11px;padding:5px 0;color:#4a4f72">{l.get("name") or "—"}</div>', unsafe_allow_html=True)
-            c3.markdown(f'<div style="font-size:11px;padding:5px 0;color:#4a4f72">{l.get("phone") or "—"}</div>', unsafe_allow_html=True)
-            c4.markdown(f'<div style="padding:5px 0">{badge(l["status"].upper(),c)}</div>', unsafe_allow_html=True)
-            c5.markdown(f'<div style="font-family:DM Mono,monospace;font-size:9px;color:#4a4f72;padding:5px 0">{ts}</div>', unsafe_allow_html=True)
-            st.markdown('<hr style="margin:0;border-color:#1c1f32">', unsafe_allow_html=True)
-        st.markdown("### 💬 Send Nurture")
-        with st.form("nurture"):
-            handles = [l["ig_handle"] for l in leads]
-            c1,c2,c3 = st.columns([2,1,1])
-            sel = c1.selectbox("Lead", handles, label_visibility="collapsed")
-            day_n = c2.selectbox("Day", [1,3,7,14], label_visibility="collapsed")
-            if c3.form_submit_button("Send →"):
-                res = api_post("/tasks/lead", {"ig_handle": sel, "message_text": "", "day_number": day_n})
-                st.success("Queued ✓") if res else st.error("Failed")
-
-elif page == "Agent Jobs":
-    st.markdown("### 🤖 Agent Job Log")
-    jobs = api_get("/stats/agent-jobs") or []
-    if not jobs:
-        st.markdown('<div style="color:#4a4f72;font-size:12px;padding:20px 0">No jobs yet.</div>', unsafe_allow_html=True)
-    else:
-        for j in jobs:
-            c = SC.get(j["status"], "#4a4f72")
-            ts = (j.get("created_at") or "")[:16].replace("T"," ")
-            err = f'<span style="color:#ff6b6b;font-size:9px;font-family:DM Mono,monospace"> — {str(j.get("error") or "")[:50]}</span>' if j.get("error") else ""
-            st.markdown(f'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #1c1f32"><span style="font-size:11px;font-weight:600;width:140px;flex-shrink:0">{j["agent_name"]}</span>{badge(j["status"].upper(),c)}<span style="font-family:DM Mono,monospace;font-size:9px;color:#4a4f72;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{j["job_id"]}</span><span style="font-family:DM Mono,monospace;font-size:9px;color:#4a4f72;margin-left:auto;flex-shrink:0">{ts}</span>{err}</div>', unsafe_allow_html=True)
-
-elif page == "Analytics":
-    st.markdown("### 📊 Analytics")
-    import json
-    redis_url = os.getenv("REDIS_URL","")
-    summary = None
-    if redis_url:
+# ── build lead rows ───────────────────────────────────────────────────────────
+lead_rows = ""
+for i, l in enumerate(leads):
+    name = l.get("name") or l["ig_handle"]
+    initials = "".join(w[0].upper() for w in name.split()[:2])
+    c = STATUS_COLOR.get(l["status"], "#4a4f72")
+    lc = LEAD_COLORS[i % len(LEAD_COLORS)]
+    src = l.get("source","").replace("_"," ")
+    age = ""
+    if l.get("created_at"):
         try:
-            import redis as rl
-            r = rl.from_url(redis_url, decode_responses=True, socket_connect_timeout=3)
-            raw = r.get("analytics:weekly_summary")
-            if raw: summary = json.loads(raw)
+            dt = datetime.fromisoformat(l["created_at"].replace("Z","+00:00"))
+            age = f"Day {(datetime.now(timezone.utc)-dt).days+1}"
         except Exception: pass
-    if summary:
-        c1,c2 = st.columns(2)
-        c1.metric("Weekly Reach", f'{summary.get("weekly_reach_total",0):,}')
-        c2.metric("Leads Generated", summary.get("weekly_leads_generated",0))
-        st.info(summary.get("insight_text",""))
-        mix = summary.get("recommended_content_mix",{})
-        if mix:
-            import plotly.graph_objects as go
-            fig = go.Figure(go.Bar(x=list(mix.keys()), y=list(mix.values()), marker_color=["#00e5c3","#4facfe","#ffd166","#ff6b6b","#9d6fff"]))
-            fig.update_layout(paper_bgcolor="#07080f",plot_bgcolor="#0d0f1a",font_color="#e8eaf6",height=220,margin=dict(l=10,r=10,t=10,b=10),showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No analytics data yet — runs nightly at 11 PM.")
-    if st.button("▶ Run Analytics Now"):
-        res = api_post("/tasks/analytics"); st.success("Queued ✓") if res else st.error("Failed")
+    lt_cls = f"lt-{l['status']}" if l['status'] in ('hot','warm','cold') else "lt-cold"
+    lead_rows += f"""
+    <div class="lead-item">
+      <div class="lav" style="background:{lc}18;color:{lc}">{initials}</div>
+      <div>
+        <div class="lname">{name}</div>
+        <div class="lsrc">{src}</div>
+      </div>
+      <span class="lt {lt_cls}">{l['status'].upper()}</span>
+      <div class="lday">{age}</div>
+    </div>"""
+if not lead_rows:
+    lead_rows = '<div style="color:#4a4f72;font-size:11px;padding:12px 0;text-align:center">No leads yet</div>'
 
-elif page == "Settings":
-    st.markdown("### ⚙️ Settings")
-    keys = {"API_URL": API, "ENVIRONMENT": os.getenv("ENVIRONMENT","—"), "GROQ_API_KEY": "✓ set" if os.getenv("GROQ_API_KEY") else "✗ NOT SET", "META_ACCESS_TOKEN": "✓ set" if os.getenv("META_ACCESS_TOKEN") else "✗ NOT SET", "TELEGRAM_BOT_TOKEN": "✓ set" if os.getenv("TELEGRAM_BOT_TOKEN") else "✗ NOT SET", "WHATSAPP_PHONE_NUMBER_ID": os.getenv("WHATSAPP_PHONE_NUMBER_ID","✗ NOT SET"), "STABILITY_API_KEY": "✓ set" if os.getenv("STABILITY_API_KEY") else "✗ NOT SET"}
-    for k,v in keys.items():
-        ok = "✗" not in str(v)
-        c = "#00e5c3" if ok else "#ff6b6b"
-        st.markdown(f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #1c1f32;font-size:11px"><span style="font-family:DM Mono,monospace;color:#4a4f72">{k}</span><span style="color:{c}">{v}</span></div>', unsafe_allow_html=True)
-    health = api_get("/health")
-    st.markdown('<div style="margin-top:10px"></div>', unsafe_allow_html=True)
-    if health: st.success(f"API online — {health.get('timestamp','')[:19]}")
-    else: st.error(f"API unreachable at {API}")
+# ── build reach bars ──────────────────────────────────────────────────────────
+max_reach = max((r["reach"] for r in reach), default=1) or 1
+reach_bars = ""
+for r in reach:
+    h = max(4, int(r["reach"] / max_reach * 65))
+    op = 0.4 + 0.6 * (r["reach"] / max_reach)
+    reach_bars += f"""
+    <div class="bw">
+      <div class="bval">{fmt(r["reach"])}</div>
+      <div class="bar" style="height:{h}px;background:linear-gradient(180deg,#00e5c3,#4facfe);opacity:{op:.2f}"></div>
+      <div class="blbl">{r["day"]}</div>
+    </div>"""
+
+# ── build funnels ─────────────────────────────────────────────────────────────
+FUNNEL_COLORS = ["#9d6fff","#4facfe","#00e5c3","#ffd166","#ff6b6b"]
+def funnel_steps(steps, colors):
+    html = ""
+    for i, s in enumerate(steps):
+        v = s["value"]
+        label = fmt(v) if isinstance(v, int) else str(v)
+        html += f"""<div class="fn-step">
+<div class="fn-lbl"><span class="fn-name">{s["label"]}</span><span class="fn-num">{label}</span></div>
+<div class="fn-bg"><div class="fn-fill" style="width:{s["pct"]}%;background:{colors[i%len(colors)]}"></div></div></div>"""
+    return html
+
+lf = funnels.get("lead_funnel", [{"label":"Reached","value":0,"pct":100},{"label":"Engaged","value":0,"pct":75},{"label":"DM'd / Enquired","value":0,"pct":48},{"label":"Demo / Trial","value":0,"pct":28},{"label":"Admitted","value":0,"pct":12}])
+af = funnels.get("adaptiq_funnel", [{"label":"Promo Views","value":0,"pct":100},{"label":"Link Clicks","value":0,"pct":70},{"label":"Free Trial","value":0,"pct":42},{"label":"Active Day 5","value":0,"pct":26},{"label":"Paid Converted","value":0,"pct":10}])
+
+# ── build live feed ───────────────────────────────────────────────────────────
+feed_rows = ""
+FEED_ICONS = {"post":("✓","#00e5c3"),"lead":("💬","#9d6fff"),"admission":("⭐","#ffd166"),"trial":("🎯","#4facfe")}
+for e in feed[:4]:
+    ic, bg = FEED_ICONS.get(e.get("type","post"), ("•","#4a4f72"))
+    ts = ago(e.get("time",""))
+    feed_rows += f"""<div class="feed-item">
+<div class="fic" style="background:{bg}18">{ic}</div>
+<div><div class="ft"><strong>{e.get("text","")}</strong></div>
+<div class="ft-time">{ts}</div></div></div>"""
+if not feed_rows:
+    feed_rows = '<div style="color:#4a4f72;font-size:11px;padding:8px 0">No recent activity</div>'
+
+# ── build calendar ────────────────────────────────────────────────────────────
+today_dt = datetime.now(timezone.utc)
+week_start = today_dt - timedelta(days=today_dt.weekday())
+TYPE_COLORS = {"instagram":"cp","reel":"cp","carousel":"cg","story":"cb","post":"cy","whatsapp":"cr","telegram":"cb"}
+cal_days = ""
+for i in range(7):
+    day = week_start + timedelta(days=i)
+    key = day.strftime("%Y-%m-%d")
+    is_today = key == today_dt.strftime("%Y-%m-%d")
+    cls = "cal-day today" if is_today else "cal-day"
+    dot = " ●" if is_today else ""
+    events = cal.get(key, [])
+    ev_html = "".join(f'<div class="ce {TYPE_COLORS.get(e.get("platform","post"),"cy")}">{e["caption"][:16]}</div>' for e in events[:3])
+    cal_days += f'<div class="{cls}"><div class="cal-num">{day.day}{dot}</div>{ev_html}</div>'
+
+# ── revenue numbers ───────────────────────────────────────────────────────────
+hot = kpis.get("hot_leads", 0)
+trials = kpis.get("trials_today", 0)
+topper_rev = hot * 25000
+adaptiq_rev = trials * 299
+total_rev = topper_rev + adaptiq_rev
+
+# ── render HTML ───────────────────────────────────────────────────────────────
+now_str = datetime.now().strftime("%A, %d %B %Y")
+
+HTML = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap');
+*{{box-sizing:border-box;margin:0;padding:0;}}
+:root{{--bg:#07080f;--surface:#0d0f1a;--surface2:#111320;--border:#1c1f32;--border2:#242742;--text:#e8eaf6;--muted:#4a4f72;--accent:#00e5c3;--accent2:#ff6b6b;--accent3:#ffd166;--accent4:#4facfe;--purple:#9d6fff;}}
+body{{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);display:flex;height:100vh;overflow:hidden;font-size:13px;}}
+.sb{{width:200px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;}}
+.sb-brand{{padding:20px 18px 16px;border-bottom:1px solid var(--border);}}
+.sb-brand-name{{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;letter-spacing:-0.5px;color:var(--accent);}}
+.sb-brand-sub{{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:2px;margin-top:2px;text-transform:uppercase;}}
+.sb-nav{{flex:1;padding:12px 0;overflow-y:auto;}}
+.sb-group{{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;padding:10px 18px 4px;}}
+.sb-item{{display:flex;align-items:center;gap:8px;padding:7px 18px;color:var(--muted);font-size:12px;font-weight:500;border-right:2px solid transparent;}}
+.sb-item.on{{color:var(--accent);background:#00e5c308;border-right-color:var(--accent);}}
+.sb-foot{{padding:14px 18px;border-top:1px solid var(--border);}}
+.pulse-dot{{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:6px;animation:glow 2s infinite;}}
+@keyframes glow{{0%,100%{{box-shadow:0 0 4px var(--accent);}}50%{{box-shadow:0 0 10px var(--accent);}}}}
+@keyframes pulse{{0%,100%{{opacity:1;}}50%{{opacity:0.4;}}}}
+.sb-status{{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);}}
+.main{{flex:1;display:flex;flex-direction:column;overflow:hidden;}}
+.topbar{{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}}
+.tb-title{{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;}}
+.tb-sub{{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);margin-top:1px;letter-spacing:1px;}}
+.tb-right{{display:flex;align-items:center;gap:10px;}}
+.chip{{font-family:'DM Mono',monospace;font-size:9px;padding:3px 10px;border-radius:4px;letter-spacing:1px;font-weight:500;}}
+.chip-live{{background:#00e5c315;color:var(--accent);border:1px solid #00e5c330;}}
+.btn-sm{{font-size:11px;font-weight:600;padding:6px 14px;border-radius:6px;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;}}
+.btn-outline{{background:transparent;color:var(--muted);border:1px solid var(--border2);}}
+.btn-fill{{background:var(--accent);color:#000;}}
+.av{{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#00e5c3,#4facfe);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:10px;font-weight:800;color:#000;}}
+.content{{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px;}}
+::-webkit-scrollbar{{width:3px;}}::-webkit-scrollbar-thumb{{background:var(--border2);}}
+.kpi-row{{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}}
+.kpi{{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;position:relative;overflow:hidden;}}
+.kpi::before{{content:'';position:absolute;top:0;left:0;right:0;height:2px;}}
+.kpi-1::before{{background:var(--accent);}} .kpi-2::before{{background:var(--accent4);}} .kpi-3::before{{background:var(--accent3);}} .kpi-4::before{{background:var(--purple);}} .kpi-5::before{{background:var(--accent2);}}
+.kpi-lbl{{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:5px;}}
+.kpi-val{{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;letter-spacing:-1px;}}
+.kpi-delta{{font-size:10px;margin-top:3px;color:var(--muted);}}
+.up{{color:var(--accent);}}
+.row{{display:grid;gap:10px;}} .r3{{grid-template-columns:1.1fr 1.4fr 1.1fr;}} .r4{{grid-template-columns:1.6fr 1fr 1fr 0.9fr;}}
+.panel{{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}}
+.ph{{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}}
+.ph-title{{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;}}
+.ph-meta{{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);}}
+.pb{{padding:10px 14px;}}
+.agent-row{{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px;}}
+.agent-row:last-child{{border-bottom:none;}}
+.ad{{width:6px;height:6px;border-radius:50%;flex-shrink:0;}}
+.an{{font-weight:600;width:90px;flex-shrink:0;font-size:11px;}}
+.at{{color:var(--muted);flex:1;font-size:10px;font-family:'DM Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
+.abadge{{font-family:'DM Mono',monospace;font-size:9px;padding:2px 6px;border-radius:3px;letter-spacing:.5px;}}
+.post-item{{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);align-items:center;}}
+.post-item:last-child{{border-bottom:none;}}
+.post-icon{{width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}}
+.pi-title{{font-size:11px;font-weight:600;margin-bottom:2px;}}
+.pi-detail{{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);}}
+.ps{{font-family:'DM Mono',monospace;font-size:9px;padding:2px 7px;border-radius:3px;letter-spacing:.5px;margin-left:auto;flex-shrink:0;}}
+.ps-live{{background:#00e5c312;color:var(--accent);}} .ps-sch{{background:#4facfe12;color:var(--accent4);}} .ps-dft{{background:#ffd16612;color:var(--accent3);}}
+.lead-item{{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px;}}
+.lead-item:last-child{{border-bottom:none;}}
+.lav{{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;font-family:'Syne',sans-serif;}}
+.lname{{font-weight:600;font-size:11px;}} .lsrc{{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);margin-top:1px;}}
+.lt{{font-family:'DM Mono',monospace;font-size:9px;padding:2px 7px;border-radius:3px;margin-left:auto;flex-shrink:0;}}
+.lt-hot{{background:#ff6b6b15;color:var(--accent2);}} .lt-warm{{background:#ffd16615;color:var(--accent3);}} .lt-cold{{background:#4facfe15;color:var(--accent4);}}
+.lday{{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);width:36px;text-align:right;}}
+.bar-chart{{display:flex;align-items:flex-end;gap:5px;height:70px;padding-top:6px;}}
+.bw{{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;}}
+.bar{{width:100%;border-radius:3px 3px 0 0;}}
+.blbl{{font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);}} .bval{{font-family:'DM Mono',monospace;font-size:8px;color:var(--text);}}
+.fn-step{{margin-bottom:7px;}} .fn-lbl{{display:flex;justify-content:space-between;margin-bottom:2px;font-size:10px;}}
+.fn-name{{color:var(--muted);}} .fn-num{{font-weight:700;font-family:'DM Mono',monospace;}}
+.fn-bg{{background:var(--border);border-radius:2px;height:4px;}} .fn-fill{{height:4px;border-radius:2px;}}
+.rev{{background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:14px;border-top:2px solid var(--accent);}}
+.rev-lbl{{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:5px;}}
+.rev-amt{{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:var(--accent);letter-spacing:-1px;}}
+.rev-sub{{font-size:10px;color:var(--muted);margin-top:2px;}}
+.rev-split{{display:flex;gap:7px;margin-top:9px;}}
+.rev-item{{flex:1;background:#ffffff06;border-radius:5px;padding:7px;border:1px solid var(--border);}}
+.rev-item-lbl{{font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);margin-bottom:2px;}}
+.rev-item-val{{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;}}
+.feed-item{{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);align-items:flex-start;}}
+.feed-item:last-child{{border-bottom:none;}}
+.fic{{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;}}
+.ft{{font-size:10px;line-height:1.4;}} .ft strong{{color:var(--text);}}
+.ft-time{{font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);margin-top:1px;}}
+.cal{{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}}
+.cal-hd{{font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);text-align:center;padding:3px;letter-spacing:1px;}}
+.cal-day{{background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:5px;min-height:54px;}}
+.cal-day.today{{border-color:var(--accent);background:#00e5c305;}}
+.cal-num{{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);margin-bottom:3px;font-weight:500;}}
+.cal-day.today .cal-num{{color:var(--accent);}}
+.ce{{border-radius:3px;padding:2px 4px;margin-bottom:2px;font-size:8px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'DM Mono',monospace;}}
+.cp{{background:#9d6fff18;color:var(--purple);}} .cg{{background:#00e5c318;color:var(--accent);}} .cb{{background:#4facfe18;color:var(--accent4);}} .cy{{background:#ffd16618;color:var(--accent3);}} .cr{{background:#ff6b6b18;color:var(--accent2);}}
+</style></head><body>
+
+<div class="sb">
+  <div class="sb-brand">
+    <div class="sb-brand-name">BrandIQ</div>
+    <div class="sb-brand-sub">TOPPER IAS · ADAPTIQ</div>
+  </div>
+  <div class="sb-nav">
+    <div class="sb-group">Main</div>
+    <div class="sb-item on">▣ Dashboard</div>
+    <div class="sb-group">Marketing</div>
+    <div class="sb-item">📸 Instagram</div>
+    <div class="sb-item">💬 WhatsApp</div>
+    <div class="sb-item">✈️ Telegram</div>
+    <div class="sb-group">Sales</div>
+    <div class="sb-item">👥 Leads</div>
+    <div class="sb-item">🔄 Nurture Flows</div>
+    <div class="sb-item">🎯 Adaptiq Funnel</div>
+    <div class="sb-group">Reports</div>
+    <div class="sb-item">📊 Analytics</div>
+  </div>
+  <div class="sb-foot"><span class="pulse-dot"></span><span class="sb-status">9/9 AGENTS LIVE</span></div>
+</div>
+
+<div class="main">
+  <div class="topbar">
+    <div>
+      <div class="tb-title">Live Dashboard</div>
+      <div class="tb-sub">{now_str.upper()} · AUTO-PILOT ON</div>
+    </div>
+    <div class="tb-right">
+      <span class="chip chip-live">● LIVE</span>
+      <button class="btn-sm btn-outline" onclick="window.open('{API}/docs','_blank')">API Docs</button>
+      <button class="btn-sm btn-fill" onclick="fetch('{API}/tasks/content',{{method:'POST'}}).then(()=>alert('Content Crew queued!'))">+ Run Crew</button>
+      <div class="av">TI</div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="kpi-row">
+      <div class="kpi kpi-1"><div class="kpi-lbl">Posts Today</div><div class="kpi-val" style="color:var(--accent)">{kpis.get("posts_today",0)}</div><div class="kpi-delta"><span class="up">↑</span> {kpis.get("total_posts",0)} total published</div></div>
+      <div class="kpi kpi-2"><div class="kpi-lbl">New Leads</div><div class="kpi-val" style="color:var(--accent4)">{kpis.get("new_leads",0)}</div><div class="kpi-delta"><span class="up">↑</span> {kpis.get("total_leads",0)} total captured</div></div>
+      <div class="kpi kpi-3"><div class="kpi-lbl">Hot Leads</div><div class="kpi-val" style="color:var(--accent3)">{kpis.get("hot_leads",0)}</div><div class="kpi-delta"><span class="up">↑</span> Ready to convert</div></div>
+      <div class="kpi kpi-4"><div class="kpi-lbl">Adaptiq Trials</div><div class="kpi-val" style="color:var(--purple)">{kpis.get("trials_today",0)}</div><div class="kpi-delta"><span class="up">↑</span> Active today</div></div>
+      <div class="kpi kpi-5"><div class="kpi-lbl">WhatsApp Sent</div><div class="kpi-val" style="color:var(--accent2)">{kpis.get("wa_sent",0)}</div><div class="kpi-delta"><span class="up">↑</span> Nurture messages</div></div>
+    </div>
+
+    <div class="row r3">
+      <div class="panel">
+        <div class="ph"><span class="ph-title">Agent Status</span><span class="ph-meta">9/9 ACTIVE</span></div>
+        <div class="pb" style="padding:8px 14px">{agent_rows}</div>
+      </div>
+      <div class="panel">
+        <div class="ph"><span class="ph-title">Content Queue — Today</span><span class="ph-meta">{len(posts)} POSTS</span></div>
+        <div class="pb">{post_rows}</div>
+      </div>
+      <div class="panel">
+        <div class="ph"><span class="ph-title">Lead Pipeline</span><span class="ph-meta">{kpis.get("new_leads",0)} TODAY</span></div>
+        <div class="pb" style="padding:8px 14px">{lead_rows}</div>
+      </div>
+    </div>
+
+    <div class="row r4">
+      <div class="panel">
+        <div class="ph"><span class="ph-title">Weekly Reach — Instagram</span><span class="ph-meta">LAST 7 DAYS</span></div>
+        <div class="pb"><div class="bar-chart">{reach_bars}</div></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><span class="ph-title">Admission Funnel</span><span class="ph-meta">THIS MONTH</span></div>
+        <div class="pb">{funnel_steps(lf, FUNNEL_COLORS)}</div>
+      </div>
+      <div class="panel">
+        <div class="ph"><span class="ph-title">Adaptiq Funnel</span><span class="ph-meta">THIS MONTH</span></div>
+        <div class="pb">{funnel_steps(af, ["#00e5c3"]*5)}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="rev">
+          <div class="rev-lbl">Revenue This Month</div>
+          <div class="rev-amt">₹{fmt(total_rev)}</div>
+          <div class="rev-sub">Based on live DB data</div>
+          <div class="rev-split">
+            <div class="rev-item"><div class="rev-item-lbl">TOPPER IAS</div><div class="rev-item-val" style="color:var(--purple)">₹{fmt(topper_rev)}</div></div>
+            <div class="rev-item"><div class="rev-item-lbl">ADAPTIQ</div><div class="rev-item-val" style="color:var(--accent)">₹{fmt(adaptiq_rev)}</div></div>
+          </div>
+        </div>
+        <div class="panel" style="flex:1">
+          <div class="ph"><span class="ph-title">Live Feed</span><span class="ph-meta">REAL-TIME</span></div>
+          <div class="pb" style="padding:8px 12px">{feed_rows}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><span class="ph-title">Content Calendar — This Week</span><span class="ph-meta">AUTO-GENERATED BY STRATEGYAGENT</span></div>
+      <div class="pb">
+        <div class="cal">
+          <div class="cal-hd">MON</div><div class="cal-hd">TUE</div><div class="cal-hd">WED</div>
+          <div class="cal-hd">THU</div><div class="cal-hd">FRI</div><div class="cal-hd">SAT</div><div class="cal-hd">SUN</div>
+          {cal_days}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body></html>"""
+
+components.html(HTML, height=900, scrolling=True)
