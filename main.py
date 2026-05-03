@@ -7,7 +7,21 @@ import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from loguru import logger
+
+
+# ---------------------------------------------------------------------------
+# Request models
+# ---------------------------------------------------------------------------
+
+class LeadTaskRequest(BaseModel):
+    ig_handle: str
+    message_text: str = "what are the fees for batch?"
+    day_number: int = 0
+
+class ApprovePostRequest(BaseModel):
+    post_id: str
 
 # ---------------------------------------------------------------------------
 # Sentry
@@ -93,15 +107,14 @@ async def trigger_analytics_crew():
 
 
 @app.post("/tasks/lead")
-async def trigger_lead_crew(request: Request):
-    body = await request.json()
+async def trigger_lead_crew(body: LeadTaskRequest):
     from src.scheduler.tasks import run_lead_crew_task
     task = run_lead_crew_task.delay(
-        ig_handle=body.get("ig_handle", ""),
-        message_text=body.get("message_text", ""),
-        day_number=body.get("day_number", 0),
+        ig_handle=body.ig_handle,
+        message_text=body.message_text,
+        day_number=body.day_number,
     )
-    return {"task_id": task.id, "status": "queued"}
+    return {"task_id": task.id, "status": "queued", "ig_handle": body.ig_handle, "day_number": body.day_number}
 
 
 @app.get("/posts")
@@ -127,20 +140,19 @@ async def list_posts(status: str = None, limit: int = 20):
 
 
 @app.post("/posts/approve")
-async def approve_post(request: Request):
-    body = await request.json()
+async def approve_post(body: ApprovePostRequest):
     from sqlalchemy import select
     from src.database import AsyncSessionLocal
     from src.models import Post, PostStatus
     import uuid
     async with AsyncSessionLocal() as db:
-        post = await db.scalar(select(Post).where(Post.id == uuid.UUID(body["post_id"])))
+        post = await db.scalar(select(Post).where(Post.id == uuid.UUID(body.post_id)))
         if not post:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Post not found")
         post.status = PostStatus.approved
         await db.commit()
-        return {"post_id": body["post_id"], "status": "approved"}
+        return {"post_id": body.post_id, "status": "approved"}
 
 
 @app.post("/posts/publish/{post_id}")
