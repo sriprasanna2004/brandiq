@@ -193,8 +193,119 @@ async def get_kpis():
     }
 
 
-@app.get("/stats/agent-jobs")
-async def get_agent_jobs(limit: int = 20):
+@app.get("/stats/agent-status")
+async def get_agent_status():
+    from sqlalchemy import select
+    from src.database import AsyncSessionLocal
+    from src.models import AgentJob
+    from datetime import timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    agents = [
+        "ContentCrew","LeadCrew","AnalyticsCrew",
+        "StrategyAgent","ContentWriterAgent","VisualCreatorAgent",
+        "SchedulerAgent","LeadCaptureAgent","LeadNurtureAgent",
+        "ReelScriptAgent","AnalyticsAgent","AdaptiqPromoAgent",
+    ]
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(AgentJob)
+            .where(AgentJob.created_at >= cutoff)
+            .order_by(AgentJob.created_at.desc())
+        )
+        jobs = result.scalars().all()
+    latest = {}
+    for j in jobs:
+        if j.agent_name not in latest:
+            latest[j.agent_name] = {"agent_name": j.agent_name, "status": j.status.value, "job_id": j.job_id, "created_at": j.created_at.isoformat()}
+    return list(latest.values())
+
+
+@app.get("/stats/live-feed")
+async def get_live_feed():
+    from sqlalchemy import select, or_
+    from src.database import AsyncSessionLocal
+    from src.models import AgentJob, Lead, Post, PostStatus
+    from datetime import timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=12)
+    events = []
+    async with AsyncSessionLocal() as db:
+        posts = await db.execute(select(Post).where(Post.posted_at >= cutoff, Post.status == PostStatus.posted).order_by(Post.posted_at.desc()).limit(5))
+        for p in posts.scalars().all():
+            events.append({"type": "post", "icon": "✓", "text": f"Post published — \"{p.caption_a[:40]}...\"", "time": p.posted_at.isoformat(), "color": "#00e5c3"})
+        leads = await db.execute(select(Lead).where(Lead.created_at >= cutoff, Lead.status == "hot").order_by(Lead.created_at.desc()).limit(5))
+        for l in leads.scalars().all():
+            events.append({"type": "lead", "icon": "💬", "text": f"Hot lead — @{l.ig_handle}", "time": l.created_at.isoformat(), "color": "#9d6fff"})
+    events.sort(key=lambda x: x["time"], reverse=True)
+    return events[:8]
+
+
+@app.get("/stats/reach")
+async def get_reach():
+    from sqlalchemy import select, func
+    from src.database import AsyncSessionLocal
+    from src.models import PostAnalytics
+    from datetime import timezone, timedelta
+    async with AsyncSessionLocal() as db:
+        rows = []
+        for i in range(6, -1, -1):
+            day = datetime.now(timezone.utc) - timedelta(days=i)
+            day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day.replace(hour=23, minute=59, second=59)
+            reach = await db.scalar(select(func.sum(PostAnalytics.reach)).where(PostAnalytics.recorded_at >= day_start, PostAnalytics.recorded_at <= day_end)) or 0
+            rows.append({"day": day.strftime("%a"), "reach": reach})
+    return rows
+
+
+@app.get("/stats/funnels")
+async def get_funnels():
+    from sqlalchemy import select, func
+    from src.database import AsyncSessionLocal
+    from src.models import Lead, AdaptiqTrial, PostAnalytics
+    from datetime import timezone
+    today = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    async with AsyncSessionLocal() as db:
+        total_leads = await db.scalar(select(func.count(Lead.id)).where(Lead.created_at >= today)) or 0
+        hot_leads = await db.scalar(select(func.count(Lead.id)).where(Lead.status == "hot", Lead.created_at >= today)) or 0
+        trials = await db.scalar(select(func.count(AdaptiqTrial.id)).where(AdaptiqTrial.trial_start >= today)) or 0
+        converted = await db.scalar(select(func.count(AdaptiqTrial.id)).where(AdaptiqTrial.converted_at.isnot(None), AdaptiqTrial.trial_start >= today)) or 0
+        total_reach = await db.scalar(select(func.sum(PostAnalytics.reach)).where(PostAnalytics.recorded_at >= today)) or 0
+    return {
+        "lead_funnel": [
+            {"label": "Reached", "value": total_reach or 0, "pct": 100},
+            {"label": "Engaged", "value": int(total_reach * 0.03) if total_reach else 0, "pct": 75},
+            {"label": "Enquired", "value": total_leads, "pct": 48},
+            {"label": "Trial", "value": trials, "pct": 28},
+            {"label": "Admitted", "value": hot_leads, "pct": 12},
+        ],
+        "adaptiq_funnel": [
+            {"label": "Promo Views", "value": total_reach or 0, "pct": 100},
+            {"label": "Link Clicks", "value": int(total_reach * 0.004) if total_reach else 0, "pct": 70},
+            {"label": "Free Trial", "value": trials, "pct": 42},
+            {"label": "Day 5 Active", "value": int(trials * 0.63) if trials else 0, "pct": 26},
+            {"label": "Converted", "value": converted, "pct": 10},
+        ],
+    }
+
+
+@app.get("/calendar")
+async def get_calendar():
+    from sqlalchemy import select
+    from src.database import AsyncSessionLocal
+    from src.models import Post
+    from datetime import timezone, timedelta
+    today = datetime.now(timezone.utc)
+    week_start = today - timedelta(days=today.weekday())
+    week_end = week_start + timedelta(days=7)
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Post).where(Post.scheduled_at >= week_start, Post.scheduled_at <= week_end).order_by(Post.scheduled_at))
+        posts = result.scalars().all()
+    calendar = {}
+    for p in posts:
+        day = p.scheduled_at.strftime("%Y-%m-%d")
+        if day not in calendar:
+            calendar[day] = []
+        calendar[day].append({"caption": p.caption_a[:30], "platform": p.platform.value, "status": p.status.value})
+    return calendar
     from sqlalchemy import select
     from src.database import AsyncSessionLocal
     from src.models import AgentJob
