@@ -80,10 +80,11 @@ def post_rows_html(post_list, show_actions=False):
         sched = (p.get("scheduled_at") or "")[:16].replace("T"," ")
         action = ""
         if show_actions:
+            pid = p["id"]
             if s == "pending":
-                action = f'<button onclick="callAPI(\'/posts/approve\',\'POST\',{{post_id:\'{p["id"]}\'}},\'Approved!\')" style="background:#00e5c322;color:#00e5c3;border:1px solid #00e5c344;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:6px">APPROVE</button>'
+                action = f'<button onclick="callAPI(\'/posts/approve\',\'POST\',{{post_id:\'{pid}\'}},\'Approved!\')" style="background:#00e5c322;color:#00e5c3;border:1px solid #00e5c344;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:6px">APPROVE</button>'
             elif s == "approved":
-                action = f'<button onclick="callAPI(\'/posts/publish/{p["id"]}\',\'POST\',{{}},\'Published!\')" style="background:#4facfe22;color:#4facfe;border:1px solid #4facfe44;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:6px">PUBLISH</button>'
+                action = f'<button onclick="callAPI(\'/posts/publish/{pid}\',\'POST\',{{}},\'Published!\')" style="background:#4facfe22;color:#4facfe;border:1px solid #4facfe44;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:6px">PUBLISH</button>'
         h += f'<div class="post-item"><div class="post-icon" style="background:#9d6fff18">{icon}</div><div style="flex:1;min-width:0"><div class="pi-title">{p["caption_a"][:55]}…</div><div class="pi-detail">{p["platform"].upper()} · {sched}</div></div><span class="ps {sc}">{sl}</span>{action}</div>'
     return h or '<div style="color:#4a4f72;font-size:11px;padding:12px 0;text-align:center">No posts yet — click Run Crew</div>'
 
@@ -104,8 +105,10 @@ def lead_rows_html(lead_list, show_nurture=False):
         lt_cls = f"lt-{l['status']}" if l['status'] in ('hot','warm','cold') else "lt-cold"
         nurture_btn = ""
         if show_nurture and l.get("ig_handle"):
-            nurture_btn = f'<button onclick="sendNurture(\'{l[\'ig_handle\']}\',1)" style="background:#ffd16622;color:#ffd166;border:1px solid #ffd16644;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:4px">NURTURE</button>'
-        h += f'<div class="lead-item"><div class="lav" style="background:{lc}18;color:{lc}">{initials}</div><div style="flex:1;min-width:0"><div class="lname">{name}</div><div class="lsrc">{src}</div></div><span class="lt {lt_cls}">{l["status"].upper()}</span><div class="lday">{age}</div>{nurture_btn}</div>'
+            handle = l["ig_handle"]
+            nurture_btn = f'<button onclick="sendNurture(\'{handle}\',1)" style="background:#ffd16622;color:#ffd166;border:1px solid #ffd16644;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:4px">NURTURE</button>'
+        status_upper = l["status"].upper()
+        h += f'<div class="lead-item"><div class="lav" style="background:{lc}18;color:{lc}">{initials}</div><div style="flex:1;min-width:0"><div class="lname">{name}</div><div class="lsrc">{src}</div></div><span class="lt {lt_cls}">{status_upper}</span><div class="lday">{age}</div>{nurture_btn}</div>'
     return h or '<div style="color:#4a4f72;font-size:11px;padding:12px 0;text-align:center">No leads yet</div>'
 
 def reach_bars_html():
@@ -175,13 +178,16 @@ for i, l in enumerate(wa_leads[:20]):
     lc = LEAD_COLORS[i % len(LEAD_COLORS)]
     c = SC.get(l["status"],"#4a4f72")
     lt_cls = f"lt-{l['status']}" if l['status'] in ('hot','warm','cold') else "lt-cold"
+    handle = l["ig_handle"]
+    phone = l.get("phone","—")
+    status_upper = l["status"].upper()
     wa_rows += f'''<div class="lead-item">
 <div class="lav" style="background:{lc}18;color:{lc}">{initials}</div>
-<div style="flex:1;min-width:0"><div class="lname">{name}</div><div class="lsrc">{l.get("phone","—")}</div></div>
-<span class="lt {lt_cls}">{l["status"].upper()}</span>
-<button onclick="sendNurture('{l['ig_handle']}',1)" style="background:#ffd16622;color:#ffd166;border:1px solid #ffd16644;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:6px">DAY 1</button>
-<button onclick="sendNurture('{l['ig_handle']}',3)" style="background:#4facfe22;color:#4facfe;border:1px solid #4facfe44;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:4px">DAY 3</button>
-<button onclick="sendNurture('{l['ig_handle']}',7)" style="background:#00e5c322;color:#00e5c3;border:1px solid #00e5c344;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:4px">DAY 7</button>
+<div style="flex:1;min-width:0"><div class="lname">{name}</div><div class="lsrc">{phone}</div></div>
+<span class="lt {lt_cls}">{status_upper}</span>
+<button onclick="sendNurture('{handle}',1)" style="background:#ffd16622;color:#ffd166;border:1px solid #ffd16644;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:6px">DAY 1</button>
+<button onclick="sendNurture('{handle}',3)" style="background:#4facfe22;color:#4facfe;border:1px solid #4facfe44;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:4px">DAY 3</button>
+<button onclick="sendNurture('{handle}',7)" style="background:#00e5c322;color:#00e5c3;border:1px solid #00e5c344;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:4px">DAY 7</button>
 </div>'''
 if not wa_rows:
     wa_rows = '<div style="color:#4a4f72;font-size:11px;padding:20px;text-align:center">No leads with phone numbers yet. Leads are captured from Instagram DMs.</div>'
@@ -194,7 +200,9 @@ for i, l in enumerate(leads[:30]):
     lc = LEAD_COLORS[i % len(LEAD_COLORS)]
     c = SC.get(l["status"],"#4a4f72")
     lt_cls = f"lt-{l['status']}" if l['status'] in ('hot','warm','cold') else "lt-cold"
-    age = ""
+    handle = l["ig_handle"]
+    status_upper = l["status"].upper()
+    age = 0
     if l.get("created_at"):
         try:
             dt = datetime.fromisoformat(l["created_at"].replace("Z","+00:00"))
@@ -202,12 +210,12 @@ for i, l in enumerate(leads[:30]):
         except Exception: age = 0
     nurture_rows += f'''<div class="lead-item">
 <div class="lav" style="background:{lc}18;color:{lc}">{initials}</div>
-<div style="flex:1;min-width:0"><div class="lname">{name}</div><div class="lsrc">@{l["ig_handle"]} · Day {age}</div></div>
-<span class="lt {lt_cls}">{l["status"].upper()}</span>
-<button onclick="sendNurture('{l['ig_handle']}',1)" style="background:#1c1f32;color:#4a4f72;border:1px solid #242742;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:6px">D1</button>
-<button onclick="sendNurture('{l['ig_handle']}',3)" style="background:#1c1f32;color:#4a4f72;border:1px solid #242742;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:3px">D3</button>
-<button onclick="sendNurture('{l['ig_handle']}',7)" style="background:#1c1f32;color:#4a4f72;border:1px solid #242742;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:3px">D7</button>
-<button onclick="sendNurture('{l['ig_handle']}',14)" style="background:#1c1f32;color:#4a4f72;border:1px solid #242742;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:3px">D14</button>
+<div style="flex:1;min-width:0"><div class="lname">{name}</div><div class="lsrc">@{handle} · Day {age}</div></div>
+<span class="lt {lt_cls}">{status_upper}</span>
+<button onclick="sendNurture('{handle}',1)" style="background:#1c1f32;color:#4a4f72;border:1px solid #242742;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:6px">D1</button>
+<button onclick="sendNurture('{handle}',3)" style="background:#1c1f32;color:#4a4f72;border:1px solid #242742;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:3px">D3</button>
+<button onclick="sendNurture('{handle}',7)" style="background:#1c1f32;color:#4a4f72;border:1px solid #242742;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:3px">D7</button>
+<button onclick="sendNurture('{handle}',14)" style="background:#1c1f32;color:#4a4f72;border:1px solid #242742;border-radius:4px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:DM Mono,monospace;margin-left:3px">D14</button>
 </div>'''
 if not nurture_rows:
     nurture_rows = '<div style="color:#4a4f72;font-size:11px;padding:20px;text-align:center">No leads yet</div>'
