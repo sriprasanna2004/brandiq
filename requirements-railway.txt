@@ -5,7 +5,7 @@ langchain-groq
 fastapi==0.111.0
 uvicorn==0.29.0
 celery==5.3.6
-redis==5.0.4
+redis==4.6.0
 apscheduler==3.10.4
 sqlalchemy==2.0.30
 alembic==1.13.1
