@@ -583,6 +583,7 @@ function nav(page, el) {{
   el.classList.add('on');
   const titles = {{dashboard:'Live Dashboard',instagram:'Instagram',whatsapp:'WhatsApp',telegram:'Telegram',leads:'Leads',nurture:'Nurture Flows',adaptiq:'Adaptiq Funnel',analytics:'Analytics',jobs:'Agent Jobs'}};
   document.getElementById('page-title').textContent = titles[page] || page;
+  if (page === 'adaptiq') setTimeout(loadAdaptiqFunnel, 50);
 }}
 
 function showToast(msg) {{
@@ -698,12 +699,16 @@ function simulateAdaptiqTrial() {{
     .catch(e => showToast('Error: ' + e.message));
 }}
 
-// Load funnel when Adaptiq page is opened
-const _origNav = nav;
-function nav(page, el) {{
-  _origNav(page, el);
-  if (page === 'adaptiq') loadAdaptiqFunnel();
-}}
+// Load funnel when Adaptiq page is opened — hook into nav clicks
+document.addEventListener('DOMContentLoaded', function() {{
+  document.querySelectorAll('.sb-item').forEach(function(item) {{
+    item.addEventListener('click', function() {{
+      if (item.textContent.trim().includes('Adaptiq')) {{
+        setTimeout(loadAdaptiqFunnel, 100);
+      }}
+    }});
+  }});
+}});
 </script>
 </body></html>"""
 
