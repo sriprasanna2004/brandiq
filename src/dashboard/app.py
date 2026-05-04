@@ -16,6 +16,32 @@ def get(path, fallback=None):
     except Exception:
         return fallback
 
+def post(path, body={}):
+    try:
+        r = httpx.post(f"{API}{path}", json=body, timeout=10)
+        return r.json() if r.is_success else {"error": r.text}
+    except Exception as e:
+        return {"error": str(e)}
+
+# ── Streamlit action bar (above the HTML — these actually work) ───────────────
+col1, col2, col3, col4 = st.columns([1,1,1,5])
+if col1.button("▶ Run Crew", use_container_width=True):
+    res = post("/tasks/content")
+    if res and "task_id" in res:
+        st.success(f"✓ Content Crew queued — task {res['task_id'][:8]}")
+    else:
+        st.error(str(res))
+if col2.button("📊 Run Analytics", use_container_width=True):
+    res = post("/tasks/analytics")
+    if res and "task_id" in res:
+        st.success(f"✓ Analytics queued — task {res['task_id'][:8]}")
+    else:
+        st.error(str(res))
+if col3.button("🔄 Refresh", use_container_width=True):
+    st.rerun()
+
+st.markdown("<style>div[data-testid='stHorizontalBlock']{gap:6px!important;margin-bottom:4px!important;}div[data-testid='column']{padding:0!important;}.stButton>button{background:#00e5c3!important;color:#000!important;font-weight:700!important;border:none!important;border-radius:6px!important;font-size:11px!important;height:28px!important;}</style>", unsafe_allow_html=True)
+
 kpis    = get("/stats/kpis", {})
 agents  = get("/stats/agent-status", [])
 posts   = get("/posts?limit=20", [])
