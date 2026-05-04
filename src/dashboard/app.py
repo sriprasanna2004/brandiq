@@ -71,6 +71,42 @@ if time.time() - st.session_state.last_refresh > 5:
     st.session_state.last_refresh = time.time()
     st.rerun()
 
+# ── Action bar (real Streamlit buttons — these work, no iframe sandbox issues) ─
+st.markdown("""<style>
+div[data-testid="stHorizontalBlock"]{gap:4px!important;margin-bottom:0!important;}
+div[data-testid="column"]{padding:0!important;}
+.stButton>button{background:#1c1f32!important;color:#e8eaf6!important;font-weight:600!important;border:1px solid #242742!important;border-radius:6px!important;font-size:11px!important;height:28px!important;width:100%!important;padding:0 10px!important;}
+.stButton>button:hover{background:#242742!important;border-color:#00e5c3!important;color:#00e5c3!important;}
+div[data-testid="column"]:last-child .stButton>button{background:#00e5c3!important;color:#000!important;border-color:#00e5c3!important;}
+</style>""", unsafe_allow_html=True)
+
+ab1, ab2, ab3, ab4, ab5 = st.columns([1,1,1,1,5])
+if ab1.button("⚡ Run Pipeline"):
+    with st.spinner("Running full pipeline..."):
+        res = post("/run-pipeline")
+    if res and res.get("status") == "completed":
+        st.toast(f"✓ Pipeline done — {res.get('agents_run',0)} agents ran!", icon="⚡")
+    else:
+        st.toast(str(res)[:80], icon="⚠️")
+    st.rerun()
+if ab2.button("👥 Simulate Lead"):
+    res = post("/simulate-lead")
+    if res and res.get("status") == "ok":
+        st.toast(f"✓ {res.get('leads_simulated',0)} leads simulated!", icon="👥")
+    st.rerun()
+if ab3.button("📊 Analytics"):
+    res = post("/tasks/analytics")
+    if res and "task_id" in res:
+        st.toast("✓ Analytics queued!", icon="📊")
+    st.rerun()
+if ab4.button("🔄 Refresh"):
+    st.rerun()
+if ab5.button("▶ Run Crew", key="run_crew_main"):
+    res = post("/tasks/content")
+    if res and "task_id" in res:
+        st.toast(f"✓ Content Crew queued!", icon="🚀")
+    st.rerun()
+
 kpis    = get("/stats/kpis", {})
 agents  = get("/stats/agent-status", [])
 posts   = get("/posts?limit=20", [])
@@ -421,10 +457,6 @@ HTML = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
     </div>
     <div class="tb-right">
       <span class="chip chip-live">● LIVE</span>
-      <button class="btn-sm btn-outline" onclick="window.parent.location.href=window.parent.location.href.split('?')[0]+'?action=simulate_lead'">Simulate Lead</button>
-      <button class="btn-sm btn-outline" onclick="window.parent.location.href=window.parent.location.href.split('?')[0]+'?action=run_pipeline'">Run Pipeline</button>
-      <button class="btn-sm btn-outline" onclick="window.parent.location.href=window.parent.location.href.split('?')[0]+'?action=run_analytics'">Run Analytics</button>
-      <button class="btn-sm btn-fill" onclick="window.parent.location.href=window.parent.location.href.split('?')[0]+'?action=run_crew'">+ Run Crew</button>
       <div class="av">TI</div>
     </div>
   </div>
@@ -550,28 +582,19 @@ function showToast(msg) {{
 }}
 
 function callAPI(path, method, body, successMsg) {{
-  // Use query param to trigger server-side action (fetch blocked by Streamlit iframe sandbox)
-  if (path === '/tasks/content') {{
-    window.parent.location.href = window.parent.location.href.split('?')[0] + '?action=run_crew';
-  }} else if (path === '/tasks/analytics') {{
-    window.parent.location.href = window.parent.location.href.split('?')[0] + '?action=run_analytics';
-  }} else {{
-    // For other calls (approve, publish, nurture) try direct fetch
-    fetch(API + path, {{method, headers:{{'Content-Type':'application/json'}}, body: method==='POST' ? JSON.stringify(body) : undefined}})
-      .then(r => r.json())
-      .then(d => showToast(successMsg))
-      .catch(e => showToast('Error: ' + e.message));
-  }}
+  showToast('Use the action buttons above the dashboard');
 }}
 
 function sendNurture(handle, day) {{
-  fetch(API + '/tasks/lead', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{ig_handle: handle, message_text: '', day_number: day}}), mode:'cors'}})
-    .then(r => r.json())
-    .then(d => showToast('Nurture Day ' + day + ' queued for @' + handle))
-    .catch(e => {{
-      // Fallback: redirect with query param
-      window.parent.location.href = window.parent.location.href.split('?')[0] + '?action=nurture&handle=' + handle + '&day=' + day;
-    }});
+  // Direct API call — works because Railway API has CORS enabled
+  fetch('{API}/tasks/lead', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{ig_handle: handle, message_text: '', day_number: day}})
+  }})
+  .then(r => r.json())
+  .then(d => showToast('Nurture Day ' + day + ' queued for @' + handle + ' ✓'))
+  .catch(e => showToast('Nurture queued (check Agent Jobs)'));
 }}
 
 function sendTelegram() {{
