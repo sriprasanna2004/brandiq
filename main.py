@@ -185,19 +185,33 @@ async def list_leads(status: str = None, limit: int = 50):
 
 @app.get("/stats/kpis")
 async def get_kpis():
-    from sqlalchemy import select, func
+    from sqlalchemy import select, func, text
     from src.database import AsyncSessionLocal
     from src.models import Post, PostStatus, Lead, LeadStatus, WhatsappSequence, SequenceStatus, AdaptiqTrial
     from datetime import timezone
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     async with AsyncSessionLocal() as db:
-        posts_today   = await db.scalar(select(func.count(Post.id)).where(Post.posted_at >= today, Post.status == PostStatus.posted)) or 0
-        new_leads     = await db.scalar(select(func.count(Lead.id)).where(Lead.created_at >= today)) or 0
-        hot_leads     = await db.scalar(select(func.count(Lead.id)).where(Lead.status == LeadStatus.hot, Lead.created_at >= today)) or 0
-        wa_sent       = await db.scalar(select(func.count(WhatsappSequence.id)).where(WhatsappSequence.sent_at >= today, WhatsappSequence.status == SequenceStatus.sent)) or 0
-        trials        = await db.scalar(select(func.count(AdaptiqTrial.id)).where(AdaptiqTrial.trial_start >= today)) or 0
-        total_leads   = await db.scalar(select(func.count(Lead.id))) or 0
-        total_posts   = await db.scalar(select(func.count(Post.id)).where(Post.status == PostStatus.posted)) or 0
+        try:
+            posts_today = await db.scalar(select(func.count(Post.id)).where(Post.posted_at >= today, Post.status == PostStatus.posted)) or 0
+        except Exception: posts_today = 0
+        try:
+            new_leads = await db.scalar(select(func.count(Lead.id)).where(Lead.created_at >= today)) or 0
+        except Exception: new_leads = 0
+        try:
+            hot_leads = await db.scalar(select(func.count(Lead.id)).where(Lead.status == LeadStatus.hot, Lead.created_at >= today)) or 0
+        except Exception: hot_leads = 0
+        try:
+            wa_sent = await db.scalar(select(func.count(WhatsappSequence.id)).where(WhatsappSequence.sent_at >= today, WhatsappSequence.status == SequenceStatus.sent)) or 0
+        except Exception: wa_sent = 0
+        try:
+            trials = await db.scalar(select(func.count(AdaptiqTrial.id)).where(AdaptiqTrial.trial_start >= today)) or 0
+        except Exception: trials = 0
+        try:
+            total_leads = await db.scalar(select(func.count(Lead.id))) or 0
+        except Exception: total_leads = 0
+        try:
+            total_posts = await db.scalar(select(func.count(Post.id)).where(Post.status == PostStatus.posted)) or 0
+        except Exception: total_posts = 0
     return {
         "posts_today": posts_today, "new_leads": new_leads, "hot_leads": hot_leads,
         "wa_sent": wa_sent, "trials_today": trials,
@@ -342,6 +356,16 @@ async def get_agent_jobs(limit: int = 20):
 # ---------------------------------------------------------------------------
 # Webhooks
 # ---------------------------------------------------------------------------
+
+@app.post("/admin/create-tables")
+async def create_tables():
+    """Create all missing tables using SQLAlchemy metadata."""
+    from src.database import engine, Base
+    import src.models  # noqa — register all models
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    return {"status": "ok", "message": "All tables created"}
+
 
 @app.post("/admin/run-migrations")
 async def run_migrations():
