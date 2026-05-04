@@ -368,22 +368,20 @@ async def debug():
         import redis as rl
         redis_version = rl.__version__
         if redis_url.startswith("rediss://"):
-            # Try with ssl_context first (redis-py >= 4.x)
+            # redis-py 5.x: use connection_class with ssl_certfile=None
             try:
-                ssl_ctx = ssl.create_default_context()
-                ssl_ctx.check_hostname = False
-                ssl_ctx.verify_mode = ssl.CERT_NONE
-                r = rl.from_url(redis_url, decode_responses=True, ssl_context=ssl_ctx)
+                r = rl.from_url(redis_url, decode_responses=True, ssl_cert_reqs="none")
                 r.ping()
                 redis_ok = True
             except Exception as e1:
-                # Fallback: try without SSL verification param
                 try:
-                    r = rl.from_url(redis_url, decode_responses=True)
+                    # Strip rediss and reconnect as redis with ssl params
+                    plain_url = redis_url.replace("rediss://", "redis://")
+                    r = rl.from_url(plain_url, decode_responses=True)
                     r.ping()
                     redis_ok = True
                 except Exception as e2:
-                    queue_len = f"ssl_ctx failed: {e1} | plain failed: {e2}"
+                    queue_len = f"v1: {str(e1)[:80]} | v2: {str(e2)[:80]}"
         else:
             r = rl.from_url(redis_url, decode_responses=True)
             r.ping()
