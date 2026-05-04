@@ -4,9 +4,8 @@ import redis as redis_lib
 
 def get_redis():
     url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    if url.startswith("rediss://"):
-        # redis-py 5.x: ssl_cert_reqs as string "none"
-        return redis_lib.from_url(url, decode_responses=True, ssl_cert_reqs="none")
+    if url.startswith("rediss://") and "ssl_cert_reqs" not in url:
+        url = url + ("&" if "?" in url else "?") + "ssl_cert_reqs=none"
     return redis_lib.from_url(url, decode_responses=True)
 
 try:

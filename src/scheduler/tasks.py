@@ -7,18 +7,18 @@ from celery import Celery
 from loguru import logger
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+# Railway Redis uses rediss:// — append ssl_cert_reqs=none to URL
+if REDIS_URL.startswith("rediss://") and "ssl_cert_reqs" not in REDIS_URL:
+    REDIS_URL_BROKER = REDIS_URL + ("&" if "?" in REDIS_URL else "?") + "ssl_cert_reqs=none"
+else:
+    REDIS_URL_BROKER = REDIS_URL
 
 celery_app = Celery(
     "brandiq",
-    broker=REDIS_URL,
-    backend=REDIS_URL,
+    broker=REDIS_URL_BROKER,
+    backend=REDIS_URL_BROKER,
     include=["src.scheduler.tasks"],
 )
-
-# Railway Redis uses rediss:// (SSL) — configure SSL for Celery
-if REDIS_URL.startswith("rediss://"):
-    celery_app.conf.broker_use_ssl = {"ssl_cert_reqs": "none"}
-    celery_app.conf.redis_backend_use_ssl = {"ssl_cert_reqs": "none"}
 
 celery_app.conf.update(
     task_serializer="json",

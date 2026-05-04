@@ -368,20 +368,13 @@ async def debug():
         import redis as rl
         redis_version = rl.__version__
         if redis_url.startswith("rediss://"):
-            # redis-py 5.x: use connection_class with ssl_certfile=None
+            url_fixed = redis_url + ("&" if "?" in redis_url else "?") + "ssl_cert_reqs=none"
             try:
-                r = rl.from_url(redis_url, decode_responses=True, ssl_cert_reqs="none")
+                r = rl.from_url(url_fixed, decode_responses=True)
                 r.ping()
                 redis_ok = True
             except Exception as e1:
-                try:
-                    # Strip rediss and reconnect as redis with ssl params
-                    plain_url = redis_url.replace("rediss://", "redis://")
-                    r = rl.from_url(plain_url, decode_responses=True)
-                    r.ping()
-                    redis_ok = True
-                except Exception as e2:
-                    queue_len = f"v1: {str(e1)[:80]} | v2: {str(e2)[:80]}"
+                queue_len = f"failed: {str(e1)[:120]}"
         else:
             r = rl.from_url(redis_url, decode_responses=True)
             r.ping()
