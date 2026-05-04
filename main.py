@@ -360,12 +360,19 @@ async def get_agent_jobs(limit: int = 20):
 @app.get("/admin/debug")
 async def debug():
     """Check Redis connectivity and env vars."""
-    import os
+    import os, ssl
     redis_url = os.getenv("REDIS_URL", "NOT SET")
     redis_ok = False
+    queue_len = 0
     try:
         import redis as rl
-        r = rl.from_url(redis_url, socket_connect_timeout=3)
+        if redis_url.startswith("rediss://"):
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+            r = rl.from_url(redis_url, decode_responses=True, ssl_context=ssl_ctx)
+        else:
+            r = rl.from_url(redis_url, decode_responses=True)
         r.ping()
         redis_ok = True
         queue_len = r.llen("celery")
