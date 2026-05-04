@@ -585,6 +585,76 @@ async def get_dashboard_data():
     return data
 
 
+@app.get("/adaptiq/funnel")
+async def adaptiq_funnel():
+    """Full 7-stage Adaptiq funnel with conversion rates."""
+    from src.tools.adaptiq_tool import get_funnel_stats
+    return await get_funnel_stats()
+
+
+class StartTrialRequest(BaseModel):
+    lead_id: str
+    lead_phone: str = ""
+    lead_name: str
+    source_post_id: str = ""
+    weak_subjects: list[str] = []
+
+
+@app.post("/adaptiq/start-trial")
+async def start_trial_endpoint(body: StartTrialRequest):
+    from src.tools.adaptiq_tool import start_trial
+    success = await start_trial(
+        lead_id=body.lead_id, lead_phone=body.lead_phone,
+        lead_name=body.lead_name, source_post_id=body.source_post_id,
+        weak_subjects=body.weak_subjects,
+    )
+    return {"success": success}
+
+
+class ConvertRequest(BaseModel):
+    lead_id: str
+    plan: str = "monthly"
+
+
+@app.post("/adaptiq/convert")
+async def convert_trial(body: ConvertRequest):
+    from src.tools.adaptiq_tool import mark_converted
+    success = await mark_converted(lead_id=body.lead_id, plan=body.plan)
+    return {"success": success}
+
+
+@app.get("/adaptiq/trials")
+async def list_trials(limit: int = 20):
+    from sqlalchemy import select
+    from src.database import AsyncSessionLocal
+    from src.models import AdaptiqTrial, Lead
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(AdaptiqTrial, Lead)
+            .join(Lead, AdaptiqTrial.lead_id == Lead.id)
+            .order_by(AdaptiqTrial.trial_start.desc())
+            .limit(limit)
+        )
+        rows = result.all()
+        return [
+            {
+                "id": str(t.id), "lead": l.ig_handle, "name": l.name,
+                "trial_start": t.trial_start.isoformat(),
+                "trial_end": t.trial_end.isoformat(),
+                "converted": t.converted_at is not None,
+                "plan": t.plan,
+                "weak_subjects": t.weak_subjects,
+                "improvement_pct": t.improvement_pct,
+                "day1_sent": bool(t.day1_sent), "day3_sent": bool(t.day3_sent),
+                "day5_sent": bool(t.day5_sent), "day7_sent": bool(t.day7_sent),
+                "webinar_attended": bool(t.webinar_attended),
+                "demo_booked": bool(t.demo_booked),
+                "payment_initiated": bool(t.payment_initiated),
+            }
+            for t, l in rows
+        ]
+
+
 # ---------------------------------------------------------------------------
 # Webhooks
 # ---------------------------------------------------------------------------

@@ -532,10 +532,20 @@ HTML = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
     <!-- ADAPTIQ FUNNEL -->
     <div id="page-adaptiq" class="page">
       <div class="page-title">🎯 Adaptiq Funnel</div>
-      <div class="page-sub">TRIAL → PAID CONVERSION</div>
-      <div class="row" style="grid-template-columns:1fr 1fr">
-        <div class="panel"><div class="ph"><span class="ph-title">Adaptiq Funnel</span><span class="ph-meta">THIS MONTH</span></div><div class="pb">{funnel_html(af,["#00e5c3"]*5)}</div></div>
-        <div class="panel"><div class="ph"><span class="ph-title">Trial Leads</span><span class="ph-meta">{kpis.get("trials_today",0)} ACTIVE</span></div><div class="pb" style="padding:8px 14px">{adaptiq_rows}</div></div>
+      <div class="page-sub">7-STAGE TRIAL → PAID CONVERSION PIPELINE</div>
+      <div class="row" style="grid-template-columns:1.2fr 1fr">
+        <div class="panel">
+          <div class="ph"><span class="ph-title">Conversion Funnel</span><span class="ph-meta" id="adaptiq-conv-rate">LOADING...</span></div>
+          <div class="pb" id="adaptiq-funnel-steps">Loading...</div>
+        </div>
+        <div class="panel">
+          <div class="ph"><span class="ph-title">Active Trials</span><span class="ph-meta" id="adaptiq-trial-count">0 TRIALS</span></div>
+          <div class="pb" style="padding:8px 14px" id="adaptiq-trial-list">Loading...</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button onclick="loadAdaptiqFunnel()" style="background:#00e5c3;color:#000;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">🔄 Refresh Funnel</button>
+        <button onclick="simulateAdaptiqTrial()" style="background:#9d6fff;color:#fff;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">+ Simulate Trial</button>
       </div>
     </div>
 
@@ -602,6 +612,97 @@ function sendTelegram() {{
   if (!msg) {{ showToast('Please type a message first'); return; }}
   showToast('Telegram broadcast sent!');
   document.getElementById('tg-msg').value = '';
+}}
+
+function loadAdaptiqFunnel() {{
+  fetch(API + '/adaptiq/funnel')
+    .then(r => r.json())
+    .then(data => {{
+      const el = document.getElementById('adaptiq-funnel-steps');
+      const cr = document.getElementById('adaptiq-conv-rate');
+      if (!el) return;
+      cr.textContent = data.conversion_rate + '% CONVERSION · ' + (data.avg_improvement_pct || 0) + '% AVG IMPROVEMENT';
+      let html = '';
+      (data.stages || []).forEach(s => {{
+        html += `<div class="fn-step">
+          <div class="fn-lbl"><span class="fn-name">${{s.label}}</span>
+          <span class="fn-num">${{s.value}} <span style="color:#4a4f72;font-size:9px">(${{s.pct}}%)</span></span></div>
+          <div class="fn-bg"><div class="fn-fill" style="width:${{s.pct}}%;background:${{s.color}}"></div></div></div>`;
+      }});
+      el.innerHTML = html || '<div style="color:#4a4f72;font-size:11px;padding:12px 0">No trials yet</div>';
+    }})
+    .catch(e => console.log('Funnel load failed:', e));
+
+  fetch(API + '/adaptiq/trials?limit=10')
+    .then(r => r.json())
+    .then(trials => {{
+      const el = document.getElementById('adaptiq-trial-list');
+      const cnt = document.getElementById('adaptiq-trial-count');
+      if (!el) return;
+      cnt.textContent = trials.length + ' TRIALS';
+      if (!trials.length) {{ el.innerHTML = '<div style="color:#4a4f72;font-size:11px;padding:12px 0">No trials yet</div>'; return; }}
+      let html = '';
+      trials.forEach(t => {{
+        const name = t.name || t.lead;
+        const initials = name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+        const converted = t.converted ? '✓ PAID' : 'TRIAL';
+        const color = t.converted ? '#00e5c3' : '#ffd166';
+        const days = ['D1','D3','D5','D7'].map((d,i) => {{
+          const sent = [t.day1_sent,t.day3_sent,t.day5_sent,t.day7_sent][i];
+          return `<span style="background:${{sent?'#00e5c322':'#1c1f32'}};color:${{sent?'#00e5c3':'#4a4f72'}};border-radius:3px;padding:1px 5px;font-size:8px;font-family:DM Mono,monospace">${{d}}</span>`;
+        }}).join('');
+        const improvement = t.improvement_pct ? `<span style="color:#00e5c3;font-size:9px;font-family:DM Mono,monospace">↑${{t.improvement_pct}}%</span>` : '';
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1c1f32">
+          <div style="width:26px;height:26px;border-radius:6px;background:${{color}}18;color:${{color}};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0">${{initials}}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;font-weight:600">${{name}}</div>
+            <div style="font-size:9px;color:#4a4f72;font-family:DM Mono,monospace">${{t.weak_subjects || 'subjects not set'}}</div>
+          </div>
+          ${{improvement}}
+          <span style="background:${{color}}18;color:${{color}};border-radius:3px;padding:2px 7px;font-family:DM Mono,monospace;font-size:9px">${{converted}}</span>
+        </div>
+        <div style="display:flex;gap:3px;padding:3px 0 5px 34px;border-bottom:1px solid #1c1f32">${{days}}</div>`;
+      }});
+      el.innerHTML = html;
+    }})
+    .catch(e => console.log('Trials load failed:', e));
+}}
+
+function simulateAdaptiqTrial() {{
+  // Get first lead from the leads list and start a trial
+  fetch(API + '/leads?limit=1')
+    .then(r => r.json())
+    .then(leads => {{
+      if (!leads.length) {{ showToast('No leads yet — simulate leads first'); return; }}
+      const lead = leads[0];
+      return fetch(API + '/adaptiq/start-trial', {{
+        method: 'POST',
+        headers: {{'Content-Type': 'application/json'}},
+        body: JSON.stringify({{
+          lead_id: lead.id,
+          lead_phone: lead.phone || '',
+          lead_name: lead.name || lead.ig_handle,
+          weak_subjects: ['Polity', 'Economy', 'Current Affairs']
+        }})
+      }});
+    }})
+    .then(r => r && r.json())
+    .then(d => {{
+      if (d && d.success) {{
+        showToast('✓ Trial started! Day 1 message queued');
+        setTimeout(loadAdaptiqFunnel, 1000);
+      }} else {{
+        showToast('Trial already exists or failed');
+      }}
+    }})
+    .catch(e => showToast('Error: ' + e.message));
+}}
+
+// Load funnel when Adaptiq page is opened
+const _origNav = nav;
+function nav(page, el) {{
+  _origNav(page, el);
+  if (page === 'adaptiq') loadAdaptiqFunnel();
 }}
 </script>
 </body></html>"""

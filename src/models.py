@@ -147,5 +147,16 @@ class AdaptiqTrial(Base):
     trial_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     converted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     plan: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Enhanced tracking fields
+    source_post_id: Mapped[str | None] = mapped_column(String, nullable=True)   # which post drove signup
+    weak_subjects: Mapped[str | None] = mapped_column(String, nullable=True)    # comma-separated
+    improvement_pct: Mapped[int | None] = mapped_column(Integer, nullable=True) # Day 5 progress
+    webinar_attended: Mapped[bool] = mapped_column(Integer, default=0)          # 0/1
+    demo_booked: Mapped[bool] = mapped_column(Integer, default=0)               # 0/1
+    payment_initiated: Mapped[bool] = mapped_column(Integer, default=0)         # 0/1
+    day1_sent: Mapped[bool] = mapped_column(Integer, default=0)
+    day3_sent: Mapped[bool] = mapped_column(Integer, default=0)
+    day5_sent: Mapped[bool] = mapped_column(Integer, default=0)
+    day7_sent: Mapped[bool] = mapped_column(Integer, default=0)
 
     lead: Mapped["Lead"] = relationship(back_populates="trial")
