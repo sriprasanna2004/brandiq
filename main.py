@@ -384,7 +384,7 @@ async def debug():
     except Exception as e:
         queue_len = str(e)
     return {
-        "redis_url": redis_url[:50],
+        "redis_url_full": redis_url,
         "redis_ok": redis_ok,
         "redis_version": redis_version,
         "celery_queue_length": queue_len,
