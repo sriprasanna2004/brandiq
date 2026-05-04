@@ -7,11 +7,15 @@ from celery import Celery
 from loguru import logger
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+# Railway Redis uses rediss:// with self-signed cert — disable verification
+REDIS_URL_CELERY = REDIS_URL
+if REDIS_URL.startswith("rediss://"):
+    REDIS_URL_CELERY = REDIS_URL + "?ssl_cert_reqs=none"
 
 celery_app = Celery(
     "brandiq",
-    broker=REDIS_URL,
-    backend=REDIS_URL,
+    broker=REDIS_URL_CELERY,
+    backend=REDIS_URL_CELERY,
     include=["src.scheduler.tasks"],
 )
 

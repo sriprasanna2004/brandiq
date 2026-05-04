@@ -8,8 +8,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
 try:
-    import redis as redis_lib
-    _redis = redis_lib.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True)
+    from src.redis_client import redis_client
+    _redis = redis_client()
 except Exception:
     _redis = None
 

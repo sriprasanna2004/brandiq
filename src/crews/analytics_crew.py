@@ -11,8 +11,8 @@ from src.models import AgentJob, JobStatus, PostAnalytics, Post
 from src.agents.analytics_agent import run_analytics_agent
 
 try:
-    import redis as redis_lib
-    _redis = redis_lib.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True)
+    from src.redis_client import redis_client
+    _redis = redis_client()
 except Exception:
     _redis = None
 
