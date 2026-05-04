@@ -187,37 +187,43 @@ async def list_leads(status: str = None, limit: int = 50):
 async def get_kpis():
     from sqlalchemy import select, func, text
     from src.database import AsyncSessionLocal
-    from src.models import Post, PostStatus, Lead, LeadStatus, WhatsappSequence, SequenceStatus, AdaptiqTrial
     from datetime import timezone
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    errors = []
     async with AsyncSessionLocal() as db:
+        def q(sql, params=None):
+            return db.execute(text(sql), params or {})
         try:
-            posts_today = await db.scalar(select(func.count(Post.id)).where(Post.posted_at >= today, Post.status == PostStatus.posted)) or 0
-        except Exception as e: posts_today = 0; errors.append(f"posts:{e}")
+            r = await q("SELECT COUNT(*) FROM posts WHERE posted_at >= :t AND status = 'posted'", {"t": today})
+            posts_today = r.scalar() or 0
+        except Exception: await db.rollback(); posts_today = 0
         try:
-            new_leads = await db.scalar(select(func.count(Lead.id)).where(Lead.created_at >= today)) or 0
-        except Exception as e: new_leads = 0; errors.append(f"leads:{e}")
+            r = await q("SELECT COUNT(*) FROM leads WHERE created_at >= :t", {"t": today})
+            new_leads = r.scalar() or 0
+        except Exception: await db.rollback(); new_leads = 0
         try:
-            hot_leads = await db.scalar(select(func.count(Lead.id)).where(Lead.status == LeadStatus.hot, Lead.created_at >= today)) or 0
-        except Exception as e: hot_leads = 0; errors.append(f"hot:{e}")
+            r = await q("SELECT COUNT(*) FROM leads WHERE status = 'hot' AND created_at >= :t", {"t": today})
+            hot_leads = r.scalar() or 0
+        except Exception: await db.rollback(); hot_leads = 0
         try:
-            wa_sent = await db.scalar(select(func.count(WhatsappSequence.id)).where(WhatsappSequence.sent_at >= today, WhatsappSequence.status == SequenceStatus.sent)) or 0
-        except Exception as e: wa_sent = 0; errors.append(f"wa:{e}")
+            r = await q("SELECT COUNT(*) FROM whatsapp_sequences WHERE sent_at >= :t AND status = 'sent'", {"t": today})
+            wa_sent = r.scalar() or 0
+        except Exception: await db.rollback(); wa_sent = 0
         try:
-            trials = await db.scalar(select(func.count(AdaptiqTrial.id)).where(AdaptiqTrial.trial_start >= today)) or 0
-        except Exception as e: trials = 0; errors.append(f"trials:{e}")
+            r = await q("SELECT COUNT(*) FROM adaptiq_trials WHERE trial_start >= :t", {"t": today})
+            trials = r.scalar() or 0
+        except Exception: await db.rollback(); trials = 0
         try:
-            total_leads = await db.scalar(select(func.count(Lead.id))) or 0
-        except Exception as e: total_leads = 0; errors.append(f"total_leads:{e}")
+            r = await q("SELECT COUNT(*) FROM leads")
+            total_leads = r.scalar() or 0
+        except Exception: await db.rollback(); total_leads = 0
         try:
-            total_posts = await db.scalar(select(func.count(Post.id)).where(Post.status == PostStatus.posted)) or 0
-        except Exception as e: total_posts = 0; errors.append(f"total_posts:{e}")
+            r = await q("SELECT COUNT(*) FROM posts WHERE status = 'posted'")
+            total_posts = r.scalar() or 0
+        except Exception: await db.rollback(); total_posts = 0
     return {
         "posts_today": posts_today, "new_leads": new_leads, "hot_leads": hot_leads,
         "wa_sent": wa_sent, "trials_today": trials,
         "total_leads": total_leads, "total_posts": total_posts,
-        "debug_errors": errors, "today_utc": today.isoformat(),
     }
 
 
