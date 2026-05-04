@@ -6,12 +6,11 @@ import sentry_sdk
 from celery import Celery
 from loguru import logger
 
+import re as _re
+
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-# Railway Redis uses rediss:// — append ssl_cert_reqs=none to URL
-if REDIS_URL.startswith("rediss://") and "ssl_cert_reqs" not in REDIS_URL:
-    REDIS_URL_BROKER = REDIS_URL + ("&" if "?" in REDIS_URL else "?") + "ssl_cert_reqs=none"
-else:
-    REDIS_URL_BROKER = REDIS_URL
+# Railway appends ?ssl_cert_reqs=CERT_NONE — redis-py needs lowercase 'none'
+REDIS_URL_BROKER = _re.sub(r'ssl_cert_reqs=CERT_NONE', 'ssl_cert_reqs=none', REDIS_URL, flags=_re.IGNORECASE)
 
 celery_app = Celery(
     "brandiq",

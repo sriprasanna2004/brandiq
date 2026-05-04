@@ -1,16 +1,15 @@
-"""Shared Redis client — handles Railway rediss:// correctly."""
+"""Shared Redis client — handles Railway rediss:// with CERT_NONE param."""
 import os
-import ssl
+import re
 import redis as redis_lib
 
+def _fix_redis_url(url: str) -> str:
+    """Railway appends ?ssl_cert_reqs=CERT_NONE but redis-py needs lowercase 'none'."""
+    url = re.sub(r'ssl_cert_reqs=CERT_NONE', 'ssl_cert_reqs=none', url, flags=re.IGNORECASE)
+    return url
+
 def get_redis():
-    url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    if url.startswith("rediss://"):
-        # Use ssl_context with CERT_NONE — works in redis-py 4.x
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-        return redis_lib.from_url(url, decode_responses=True, ssl_context=ssl_ctx)
+    url = _fix_redis_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
     return redis_lib.from_url(url, decode_responses=True)
 
 try:

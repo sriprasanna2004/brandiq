@@ -368,7 +368,10 @@ async def debug():
         import redis as rl
         redis_version = rl.__version__
         if redis_url.startswith("rediss://"):
-            url_fixed = redis_url + ("&" if "?" in redis_url else "?") + "ssl_cert_reqs=none"
+            import re
+            url_fixed = re.sub(r'ssl_cert_reqs=CERT_NONE', 'ssl_cert_reqs=none', redis_url, flags=re.IGNORECASE)
+            if "ssl_cert_reqs" not in url_fixed:
+                url_fixed = url_fixed + ("&" if "?" in url_fixed else "?") + "ssl_cert_reqs=none"
             try:
                 r = rl.from_url(url_fixed, decode_responses=True)
                 r.ping()
