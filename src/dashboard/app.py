@@ -23,24 +23,31 @@ def post(path, body={}):
     except Exception as e:
         return {"error": str(e)}
 
-# ── Streamlit action bar (above the HTML — these actually work) ───────────────
-col1, col2, col3, col4 = st.columns([1,1,1,5])
-if col1.button("▶ Run Crew", use_container_width=True):
+# ── Handle actions triggered from JS via query params ─────────────────────────
+qp = st.query_params
+if qp.get("action") == "run_crew":
     res = post("/tasks/content")
+    st.query_params.clear()
     if res and "task_id" in res:
-        st.success(f"✓ Content Crew queued — task {res['task_id'][:8]}")
-    else:
-        st.error(str(res))
-if col2.button("📊 Run Analytics", use_container_width=True):
-    res = post("/tasks/analytics")
-    if res and "task_id" in res:
-        st.success(f"✓ Analytics queued — task {res['task_id'][:8]}")
-    else:
-        st.error(str(res))
-if col3.button("🔄 Refresh", use_container_width=True):
+        st.toast(f"✓ Content Crew queued!", icon="🚀")
     st.rerun()
-
-st.markdown("<style>div[data-testid='stHorizontalBlock']{gap:6px!important;margin-bottom:4px!important;}div[data-testid='column']{padding:0!important;}.stButton>button{background:#00e5c3!important;color:#000!important;font-weight:700!important;border:none!important;border-radius:6px!important;font-size:11px!important;height:28px!important;}</style>", unsafe_allow_html=True)
+elif qp.get("action") == "run_analytics":
+    res = post("/tasks/analytics")
+    st.query_params.clear()
+    if res and "task_id" in res:
+        st.toast(f"✓ Analytics queued!", icon="📊")
+    st.rerun()
+elif qp.get("action") == "refresh":
+    st.query_params.clear()
+    st.rerun()
+elif qp.get("action") == "nurture":
+    handle = qp.get("handle", "")
+    day = int(qp.get("day", 1))
+    if handle:
+        res = post("/tasks/lead", {"ig_handle": handle, "message_text": "", "day_number": day})
+        st.query_params.clear()
+        st.toast(f"✓ Nurture Day {day} queued for @{handle}", icon="💬")
+    st.rerun()
 
 kpis    = get("/stats/kpis", {})
 agents  = get("/stats/agent-status", [])
@@ -519,17 +526,28 @@ function showToast(msg) {{
 }}
 
 function callAPI(path, method, body, successMsg) {{
-  fetch(API + path, {{method, headers:{{'Content-Type':'application/json'}}, body: method==='POST' ? JSON.stringify(body) : undefined}})
-    .then(r => r.json())
-    .then(d => showToast(d.task_id ? successMsg + ' ID: ' + d.task_id.slice(0,8) : successMsg))
-    .catch(e => showToast('Error: ' + e.message));
+  // Use query param to trigger server-side action (fetch blocked by Streamlit iframe sandbox)
+  if (path === '/tasks/content') {{
+    window.parent.location.href = window.parent.location.href.split('?')[0] + '?action=run_crew';
+  }} else if (path === '/tasks/analytics') {{
+    window.parent.location.href = window.parent.location.href.split('?')[0] + '?action=run_analytics';
+  }} else {{
+    // For other calls (approve, publish, nurture) try direct fetch
+    fetch(API + path, {{method, headers:{{'Content-Type':'application/json'}}, body: method==='POST' ? JSON.stringify(body) : undefined}})
+      .then(r => r.json())
+      .then(d => showToast(successMsg))
+      .catch(e => showToast('Error: ' + e.message));
+  }}
 }}
 
 function sendNurture(handle, day) {{
-  fetch(API + '/tasks/lead', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{ig_handle: handle, message_text: '', day_number: day}})}})
+  fetch(API + '/tasks/lead', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{ig_handle: handle, message_text: '', day_number: day}}), mode:'cors'}})
     .then(r => r.json())
     .then(d => showToast('Nurture Day ' + day + ' queued for @' + handle))
-    .catch(e => showToast('Error: ' + e.message));
+    .catch(e => {{
+      // Fallback: redirect with query param
+      window.parent.location.href = window.parent.location.href.split('?')[0] + '?action=nurture&handle=' + handle + '&day=' + day;
+    }});
 }}
 
 function sendTelegram() {{
