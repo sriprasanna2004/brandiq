@@ -343,7 +343,46 @@ async def get_agent_jobs(limit: int = 20):
 # Webhooks
 # ---------------------------------------------------------------------------
 
-@app.get("/webhook/instagram")
+@app.post("/admin/run-migrations")
+async def run_migrations():
+    """Run alembic migrations manually."""
+    result = subprocess.run(
+        ["alembic", "upgrade", "head"],
+        capture_output=True, text=True,
+    )
+    return {
+        "returncode": result.returncode,
+        "stdout": result.stdout[-2000:],
+        "stderr": result.stderr[-2000:],
+    }
+
+
+@app.post("/admin/fix-enums")
+async def fix_enums():
+    """Create missing enum types directly in the DB."""
+    import asyncpg
+    db_url = os.getenv("DATABASE_URL", "").replace("postgresql+asyncpg://", "postgresql://")
+    enums = [
+        ("leadstatus",     "hot,warm,cold,opted_out"),
+        ("leadsource",     "instagram_dm,instagram_comment,telegram"),
+        ("platform",       "instagram,telegram"),
+        ("poststatus",     "pending,approved,posted,failed"),
+        ("jobstatus",      "pending,running,success,failed,dead_letter"),
+        ("sequencestatus", "sent,failed,opted_out"),
+    ]
+    results = {}
+    conn = await asyncpg.connect(db_url)
+    try:
+        for name, values in enums:
+            vals = ",".join(f"'{v}'" for v in values.split(","))
+            try:
+                await conn.execute(f"CREATE TYPE {name} AS ENUM ({vals})")
+                results[name] = "created"
+            except Exception as e:
+                results[name] = f"skipped: {str(e)[:60]}"
+    finally:
+        await conn.close()
+    return results
 async def instagram_webhook_verify(
     hub_mode: str = None,
     hub_verify_token: str = None,
