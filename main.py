@@ -357,6 +357,29 @@ async def get_agent_jobs(limit: int = 20):
 # Webhooks
 # ---------------------------------------------------------------------------
 
+@app.get("/admin/debug")
+async def debug():
+    """Check Redis connectivity and env vars."""
+    import os
+    redis_url = os.getenv("REDIS_URL", "NOT SET")
+    redis_ok = False
+    try:
+        import redis as rl
+        r = rl.from_url(redis_url, socket_connect_timeout=3)
+        r.ping()
+        redis_ok = True
+        queue_len = r.llen("celery")
+    except Exception as e:
+        queue_len = str(e)
+    return {
+        "redis_url": redis_url[:40] + "..." if len(redis_url) > 40 else redis_url,
+        "redis_ok": redis_ok,
+        "celery_queue_length": queue_len,
+        "groq_key_set": bool(os.getenv("GROQ_API_KEY")),
+        "db_url_set": bool(os.getenv("DATABASE_URL")),
+    }
+
+
 @app.post("/admin/create-tables")
 async def create_tables():
     """Create all missing tables using SQLAlchemy metadata."""
