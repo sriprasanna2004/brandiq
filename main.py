@@ -73,8 +73,31 @@ async def on_startup():
     else:
         logger.info("Migrations applied successfully.")
 
+    # Ensure all tables exist (fallback for Railway)
+    try:
+        from src.database import engine, Base
+        import src.models  # noqa
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Tables verified/created.")
+    except Exception as e:
+        logger.error(f"Table creation failed: {e}")
+
     from src.scheduler.cron_jobs import start_scheduler
     start_scheduler()
+
+    # Auto-run pipeline on startup (non-blocking)
+    import asyncio
+    async def _startup_pipeline():
+        await asyncio.sleep(8)
+        logger.info("[Startup] Queuing initial content crew...")
+        try:
+            from src.scheduler.tasks import run_content_crew_task
+            run_content_crew_task.delay()
+            logger.info("[Startup] Content crew queued.")
+        except Exception as e:
+            logger.warning(f"[Startup] Could not queue content crew: {e}")
+    asyncio.create_task(_startup_pipeline())
 
 
 # ---------------------------------------------------------------------------
@@ -359,6 +382,207 @@ async def get_agent_jobs(limit: int = 20):
             }
             for j in jobs
         ]
+
+
+# ---------------------------------------------------------------------------
+# Run Pipeline (synchronous — no Celery, runs all agents in sequence)
+# ---------------------------------------------------------------------------
+
+@app.post("/run-pipeline")
+async def run_pipeline():
+    """Synchronous full pipeline: Strategy → Content → Visual → Schedule → 3 dummy leads → Analytics."""
+    from datetime import date
+    results = {}
+    errors = []
+
+    logger.info("[Pipeline] Starting full pipeline run")
+
+    # Step 1: Content pipeline
+    try:
+        from src.agents.strategy_agent import run_strategy_agent
+        plan = run_strategy_agent(week_start=date.today())
+        topic = plan.topics[0].get("topic", "UPSC Preparation") if plan.topics else "UPSC Preparation"
+        tone = plan.topics[0].get("tone", "motivational") if plan.topics else "motivational"
+        results["strategy"] = {"topic": topic, "tone": tone, "topics_count": len(plan.topics)}
+        logger.info(f"[Pipeline] StrategyAgent completed — topic: {topic}")
+    except Exception as e:
+        errors.append(f"StrategyAgent: {e}"); topic = "UPSC Preparation Tips"; tone = "motivational"
+        logger.error(f"[Pipeline] StrategyAgent failed: {e}")
+
+    try:
+        from src.agents.content_writer_agent import run_content_writer_agent
+        content = run_content_writer_agent(topic=topic, tone=tone)
+        results["content"] = {"caption_a": content.caption_a[:80], "hashtags_count": len(content.hashtags)}
+        logger.info("[Pipeline] ContentWriterAgent completed")
+    except Exception as e:
+        errors.append(f"ContentWriterAgent: {e}"); content = None
+        logger.error(f"[Pipeline] ContentWriterAgent failed: {e}")
+
+    try:
+        from src.agents.visual_creator_agent import run_visual_creator_agent
+        caption_text = content.caption_a if content else topic
+        visual = run_visual_creator_agent(caption=caption_text, topic=topic)
+        results["visual"] = {"overlay_text": visual.overlay_text, "watermark": visual.watermark_text}
+        logger.info("[Pipeline] VisualCreatorAgent completed")
+    except Exception as e:
+        errors.append(f"VisualCreatorAgent: {e}")
+        logger.error(f"[Pipeline] VisualCreatorAgent failed: {e}")
+
+    try:
+        from src.agents.scheduler_agent import run_scheduler_agent
+        schedule = run_scheduler_agent()
+        results["schedule"] = {"post_time": schedule.post_time.isoformat(), "expected_reach": schedule.expected_reach}
+        logger.info(f"[Pipeline] SchedulerAgent completed — post_time: {schedule.post_time}")
+    except Exception as e:
+        errors.append(f"SchedulerAgent: {e}")
+        logger.error(f"[Pipeline] SchedulerAgent failed: {e}")
+
+    # Step 2: Save post to DB
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from src.database import AsyncSessionLocal
+        from src.models import Post, Platform, PostStatus
+        import uuid
+        from datetime import timezone, timedelta
+        caption_a = (content.caption_a + "\n\n" + " ".join(content.hashtags)) if content else topic
+        caption_b = content.caption_b if content else None
+        post_time = schedule.post_time if "schedule" in results else datetime.now(timezone.utc) + timedelta(hours=13)
+        async with AsyncSessionLocal() as db:
+            post = Post(
+                id=uuid.uuid4(), platform=Platform.instagram,
+                caption_a=caption_a, caption_b=caption_b,
+                image_url="https://via.placeholder.com/1024x1024.png?text=TOPPER+IAS",
+                scheduled_at=post_time, status=PostStatus.pending,
+            )
+            db.add(post)
+            await db.commit()
+            results["post_saved"] = {"post_id": str(post.id), "status": "pending"}
+            logger.info(f"[Pipeline] Post saved to DB: {post.id}")
+    except Exception as e:
+        errors.append(f"SavePost: {e}")
+        logger.error(f"[Pipeline] SavePost failed: {e}")
+
+    # Step 3: Simulate 3 leads
+    dummy_leads = [
+        ("pipeline_lead_1", "what are the fees for the full batch?"),
+        ("pipeline_lead_2", "when does the next batch start for prelims?"),
+        ("pipeline_lead_3", "how to join TOPPER IAS online course?"),
+    ]
+    lead_results = []
+    for handle, message in dummy_leads:
+        try:
+            from src.agents.lead_capture_agent import run_lead_capture_agent
+            score = run_lead_capture_agent(message_text=message, ig_handle=handle)
+            from src.database import AsyncSessionLocal
+            from src.models import Lead, LeadStatus, LeadSource
+            async with AsyncSessionLocal() as db:
+                from sqlalchemy import select
+                existing = await db.scalar(select(Lead).where(Lead.ig_handle == handle))
+                if not existing:
+                    lead = Lead(id=uuid.uuid4(), ig_handle=handle, status=LeadStatus(score.status.value), source=LeadSource.instagram_dm)
+                    db.add(lead)
+                    await db.commit()
+            lead_results.append({"handle": handle, "status": score.status.value, "keywords": score.intent_keywords_found})
+            logger.info(f"[Pipeline] Lead {handle} scored as {score.status.value}")
+        except Exception as e:
+            errors.append(f"Lead {handle}: {e}")
+            logger.error(f"[Pipeline] Lead {handle} failed: {e}")
+    results["leads"] = lead_results
+
+    # Step 4: LeadNurture Day 1 for each lead
+    nurture_results = []
+    for handle, _ in dummy_leads:
+        try:
+            from src.agents.lead_nurture_agent import run_lead_nurture_agent
+            msg = run_lead_nurture_agent(lead_name=handle, day_number=1, lead_status="hot")
+            nurture_results.append({"handle": handle, "template": msg.template_name, "message_preview": msg.message[:60]})
+            logger.info(f"[Pipeline] Nurture Day 1 generated for {handle}")
+        except Exception as e:
+            errors.append(f"Nurture {handle}: {e}")
+    results["nurture"] = nurture_results
+
+    # Step 5: Analytics
+    try:
+        from src.agents.analytics_agent import run_analytics_agent
+        analytics = run_analytics_agent(posts_data=[{"content_type": "reel", "reach": 0, "saves": 0, "dm_triggers": len(lead_results)}])
+        results["analytics"] = {"insight": analytics.insight_text[:100], "weekly_reach": analytics.weekly_reach_total}
+        logger.info("[Pipeline] AnalyticsAgent completed")
+    except Exception as e:
+        errors.append(f"AnalyticsAgent: {e}")
+        logger.error(f"[Pipeline] AnalyticsAgent failed: {e}")
+
+    logger.info(f"[Pipeline] Completed — {len(errors)} errors")
+    return {"status": "completed", "results": results, "errors": errors, "agents_run": len(results)}
+
+
+@app.post("/simulate-lead")
+async def simulate_lead():
+    """Create 3 dummy leads, run LeadCaptureAgent, then LeadNurtureAgent Day 1."""
+    import uuid
+    dummy = [
+        ("sim_rahul_upsc", "what are the fees for the full batch?"),
+        ("sim_priya_ias", "when does the prelims batch start?"),
+        ("sim_ankit_civil", "how to enroll in TOPPER IAS online course?"),
+    ]
+    results = []
+    for handle, message in dummy:
+        result = {"handle": handle, "message": message}
+        try:
+            from src.agents.lead_capture_agent import run_lead_capture_agent
+            score = run_lead_capture_agent(message_text=message, ig_handle=handle)
+            result["score"] = score.status.value
+            result["keywords"] = score.intent_keywords_found
+            result["auto_reply"] = score.auto_reply_message[:80]
+            from src.database import AsyncSessionLocal
+            from src.models import Lead, LeadStatus, LeadSource
+            from sqlalchemy import select
+            async with AsyncSessionLocal() as db:
+                existing = await db.scalar(select(Lead).where(Lead.ig_handle == handle))
+                if not existing:
+                    lead = Lead(id=uuid.uuid4(), ig_handle=handle, status=LeadStatus(score.status.value), source=LeadSource.instagram_dm)
+                    db.add(lead)
+                    await db.commit()
+            logger.info(f"[SimulateLead] {handle} → {score.status.value}")
+        except Exception as e:
+            result["error"] = str(e)
+            logger.error(f"[SimulateLead] {handle} failed: {e}")
+        try:
+            from src.agents.lead_nurture_agent import run_lead_nurture_agent
+            nurture = run_lead_nurture_agent(lead_name=handle, day_number=1, lead_status=result.get("score","warm"))
+            result["nurture_day1"] = nurture.message[:80]
+        except Exception as e:
+            result["nurture_error"] = str(e)
+        results.append(result)
+    return {"status": "ok", "leads_simulated": len(results), "results": results}
+
+
+@app.get("/get-dashboard-data")
+async def get_dashboard_data():
+    """Unified endpoint: posts + leads + metrics + agent logs."""
+    from sqlalchemy import text
+    from src.database import AsyncSessionLocal
+    from datetime import timezone
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    data = {}
+    async with AsyncSessionLocal() as db:
+        try:
+            r = await db.execute(text("SELECT id::text,platform,LEFT(caption_a,60) as caption,status,scheduled_at::text FROM posts ORDER BY created_at DESC LIMIT 10"))
+            data["posts"] = [dict(row._mapping) for row in r.fetchall()]
+        except Exception: data["posts"] = []
+        try:
+            r = await db.execute(text("SELECT id::text,ig_handle,name,status,source,created_at::text FROM leads ORDER BY created_at DESC LIMIT 20"))
+            data["leads"] = [dict(row._mapping) for row in r.fetchall()]
+        except Exception: data["leads"] = []
+        try:
+            r = await db.execute(text("SELECT SUM(reach) as total_reach, SUM(dm_triggers) as total_leads, SUM(link_clicks) as total_clicks FROM post_analytics"))
+            row = r.fetchone()
+            data["metrics"] = {"total_reach": row[0] or 0, "total_leads": row[1] or 0, "total_clicks": row[2] or 0}
+        except Exception: data["metrics"] = {"total_reach": 0, "total_leads": 0, "total_clicks": 0}
+        try:
+            r = await db.execute(text("SELECT agent_name,status,created_at::text,completed_at::text,error FROM agent_jobs ORDER BY created_at DESC LIMIT 20"))
+            data["logs"] = [dict(row._mapping) for row in r.fetchall()]
+        except Exception: data["logs"] = []
+    return data
 
 
 # ---------------------------------------------------------------------------

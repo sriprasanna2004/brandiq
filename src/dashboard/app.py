@@ -48,6 +48,28 @@ elif qp.get("action") == "nurture":
         st.query_params.clear()
         st.toast(f"✓ Nurture Day {day} queued for @{handle}", icon="💬")
     st.rerun()
+elif qp.get("action") == "run_pipeline":
+    res = post("/run-pipeline")
+    st.query_params.clear()
+    if res and res.get("status") == "completed":
+        st.toast(f"✓ Full pipeline completed — {res.get('agents_run',0)} agents ran!", icon="⚡")
+    else:
+        st.toast(f"Pipeline result: {str(res)[:60]}", icon="⚠️")
+    st.rerun()
+elif qp.get("action") == "simulate_lead":
+    res = post("/simulate-lead")
+    st.query_params.clear()
+    if res and res.get("status") == "ok":
+        st.toast(f"✓ {res.get('leads_simulated',0)} leads simulated!", icon="👥")
+    st.rerun()
+
+# ── Auto-refresh every 5 seconds ─────────────────────────────────────────────
+import time
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
+if time.time() - st.session_state.last_refresh > 5:
+    st.session_state.last_refresh = time.time()
+    st.rerun()
 
 kpis    = get("/stats/kpis", {})
 agents  = get("/stats/agent-status", [])
@@ -399,8 +421,10 @@ HTML = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
     </div>
     <div class="tb-right">
       <span class="chip chip-live">● LIVE</span>
-      <button class="btn-sm btn-outline" onclick="callAPI('/tasks/analytics','POST',{{}},'Analytics queued!')">Run Analytics</button>
-      <button class="btn-sm btn-fill" onclick="callAPI('/tasks/content','POST',{{}},'Content Crew queued!')">+ Run Crew</button>
+      <button class="btn-sm btn-outline" onclick="window.parent.location.href=window.parent.location.href.split('?')[0]+'?action=simulate_lead'">Simulate Lead</button>
+      <button class="btn-sm btn-outline" onclick="window.parent.location.href=window.parent.location.href.split('?')[0]+'?action=run_pipeline'">Run Pipeline</button>
+      <button class="btn-sm btn-outline" onclick="window.parent.location.href=window.parent.location.href.split('?')[0]+'?action=run_analytics'">Run Analytics</button>
+      <button class="btn-sm btn-fill" onclick="window.parent.location.href=window.parent.location.href.split('?')[0]+'?action=run_crew'">+ Run Crew</button>
       <div class="av">TI</div>
     </div>
   </div>
