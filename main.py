@@ -359,28 +359,43 @@ async def get_agent_jobs(limit: int = 20):
 
 @app.get("/admin/debug")
 async def debug():
-    """Check Redis connectivity and env vars."""
     import os, ssl
     redis_url = os.getenv("REDIS_URL", "NOT SET")
     redis_ok = False
     queue_len = 0
+    redis_version = ""
     try:
         import redis as rl
+        redis_version = rl.__version__
         if redis_url.startswith("rediss://"):
-            ssl_ctx = ssl.create_default_context()
-            ssl_ctx.check_hostname = False
-            ssl_ctx.verify_mode = ssl.CERT_NONE
-            r = rl.from_url(redis_url, decode_responses=True, ssl_context=ssl_ctx)
+            # Try with ssl_context first (redis-py >= 4.x)
+            try:
+                ssl_ctx = ssl.create_default_context()
+                ssl_ctx.check_hostname = False
+                ssl_ctx.verify_mode = ssl.CERT_NONE
+                r = rl.from_url(redis_url, decode_responses=True, ssl_context=ssl_ctx)
+                r.ping()
+                redis_ok = True
+            except Exception as e1:
+                # Fallback: try without SSL verification param
+                try:
+                    r = rl.from_url(redis_url, decode_responses=True)
+                    r.ping()
+                    redis_ok = True
+                except Exception as e2:
+                    queue_len = f"ssl_ctx failed: {e1} | plain failed: {e2}"
         else:
             r = rl.from_url(redis_url, decode_responses=True)
-        r.ping()
-        redis_ok = True
-        queue_len = r.llen("celery")
+            r.ping()
+            redis_ok = True
+        if redis_ok:
+            queue_len = r.llen("celery")
     except Exception as e:
         queue_len = str(e)
     return {
-        "redis_url": redis_url[:40] + "..." if len(redis_url) > 40 else redis_url,
+        "redis_url": redis_url[:50],
         "redis_ok": redis_ok,
+        "redis_version": redis_version,
         "celery_queue_length": queue_len,
         "groq_key_set": bool(os.getenv("GROQ_API_KEY")),
         "db_url_set": bool(os.getenv("DATABASE_URL")),
