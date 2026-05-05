@@ -181,8 +181,33 @@ async def approve_post(body: ApprovePostRequest):
 @app.post("/posts/publish/{post_id}")
 async def publish_post_now(post_id: str):
     from src.tools.post_publisher import publish_single_post
-    success = await publish_single_post(post_id)
-    return {"post_id": post_id, "published": success}
+    from src.tools.instagram_tool import upload_image_to_instagram, create_single_post
+    from sqlalchemy import select
+    from src.database import AsyncSessionLocal
+    from src.models import Post, PostStatus
+    from datetime import timezone
+    import uuid as _uuid
+
+    async with AsyncSessionLocal() as db:
+        post = await db.scalar(select(Post).where(Post.id == _uuid.UUID(post_id)))
+        if not post:
+            return {"error": "post not found"}
+
+        # Try upload
+        try:
+            container_id = await upload_image_to_instagram(post.image_url)
+        except Exception as e:
+            return {"post_id": post_id, "published": False, "error": f"upload_image failed: {str(e)}"}
+
+        try:
+            ig_post_id = await create_single_post(container_id, post.caption_a)
+        except Exception as e:
+            return {"post_id": post_id, "published": False, "error": f"create_post failed: {str(e)}"}
+
+        post.status = PostStatus.posted
+        post.posted_at = datetime.now(timezone.utc)
+        await db.commit()
+        return {"post_id": post_id, "published": True, "ig_post_id": ig_post_id}
 
 
 @app.get("/leads")
