@@ -725,6 +725,18 @@ async def debug():
     }
 
 
+@app.get("/admin/test-r2")
+async def test_r2():
+    """Test R2 upload with a small test file."""
+    try:
+        from src.tools.storage_tool import upload_media
+        test_bytes = b"BrandIQ R2 test " + datetime.now().isoformat().encode()
+        url = upload_media(test_bytes, "test.txt", content_type="text/plain")
+        return {"status": "ok", "url": url}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @app.post("/admin/reschedule-posts")
 async def reschedule_posts():
     """Move all past-dated pending posts to today 7:30 PM IST."""
