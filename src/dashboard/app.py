@@ -481,7 +481,19 @@ HTML = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
       </div>
       <div class="row r3">
         <div class="panel"><div class="ph"><span class="ph-title">Agent Status</span><span class="ph-meta">9/9 ACTIVE</span></div><div class="pb" style="padding:8px 14px">{agent_rows_html()}</div></div>
-        <div class="panel"><div class="ph"><span class="ph-title">Content Queue — Today</span><span class="ph-meta">{len(posts)} POSTS</span></div><div class="pb">{post_rows_html(posts[:5], show_actions=True)}</div></div>
+        <div class="panel">
+          <div class="ph"><span class="ph-title">Content Queue — Today</span><span class="ph-meta">{len(posts)} POSTS</span></div>
+          <div style="display:flex;gap:0;border-bottom:1px solid #1c1f32;padding:0 14px">
+            <button onclick="filterQueue('all',this)" class="qtab qtab-on" style="background:none;border:none;color:#00e5c3;font-family:DM Sans,sans-serif;font-size:11px;font-weight:600;padding:8px 12px;cursor:pointer;border-bottom:2px solid #00e5c3;margin-bottom:-1px">All</button>
+            <button onclick="filterQueue('instagram',this)" class="qtab" style="background:none;border:none;color:#4a4f72;font-family:DM Sans,sans-serif;font-size:11px;font-weight:600;padding:8px 12px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px">Instagram</button>
+            <button onclick="filterQueue('reel',this)" class="qtab" style="background:none;border:none;color:#4a4f72;font-family:DM Sans,sans-serif;font-size:11px;font-weight:600;padding:8px 12px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px">Reels</button>
+            <button onclick="filterQueue('whatsapp',this)" class="qtab" style="background:none;border:none;color:#4a4f72;font-family:DM Sans,sans-serif;font-size:11px;font-weight:600;padding:8px 12px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px">WhatsApp</button>
+          </div>
+          <div class="pb" id="queue-all">{post_rows_html(posts[:5], show_actions=True)}</div>
+          <div class="pb" id="queue-instagram" style="display:none">{post_rows_html([p for p in posts if p.get('platform')=='instagram'][:5], show_actions=True)}</div>
+          <div class="pb" id="queue-reel" style="display:none">{post_rows_html([p for p in posts if p.get('platform') in ('reel','reels')][:5], show_actions=True)}</div>
+          <div class="pb" id="queue-whatsapp" style="display:none">{post_rows_html([p for p in posts if p.get('platform')=='whatsapp'][:5], show_actions=True)}</div>
+        </div>
         <div class="panel"><div class="ph"><span class="ph-title">Lead Pipeline</span><span class="ph-meta">{kpis.get("new_leads",0)} TODAY</span></div><div class="pb" style="padding:8px 14px">{lead_rows_html(leads[:7])}</div></div>
       </div>
       <div class="row r4">
@@ -617,6 +629,21 @@ function nav(page, el) {{
   if (page === 'adaptiq') setTimeout(loadAdaptiqFunnel, 50);
   if (page === 'analytics') setTimeout(loadAnalytics, 50);
   if (page === 'revenue') setTimeout(loadRevenue, 50);
+}}
+
+function filterQueue(type, btn) {{
+  ['all','instagram','reel','whatsapp'].forEach(t => {{
+    const el = document.getElementById('queue-' + t);
+    if (el) el.style.display = t === type ? 'block' : 'none';
+  }});
+  document.querySelectorAll('.qtab').forEach(b => {{
+    b.style.color = '#4a4f72';
+    b.style.borderBottomColor = 'transparent';
+  }});
+  if (btn) {{
+    btn.style.color = '#00e5c3';
+    btn.style.borderBottomColor = '#00e5c3';
+  }}
 }}
 
 function showToast(msg) {{
