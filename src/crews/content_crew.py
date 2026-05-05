@@ -65,9 +65,40 @@ async def run_content_crew(week_start: date) -> dict:
             logger.info("[ContentCrew] Step 4 — VisualCreatorAgent")
             visual_asset = run_visual_creator_agent(caption=post_content.caption_a, topic=topic)
 
-            # Step 5: generate image → upload to R2
-            logger.info("[ContentCrew] Step 5 — Generating image via Stability AI → R2")
-            image_url = await generate_image(prompt=visual_asset.image_prompt, topic=topic)
+            # Step 5: generate image/video → upload to R2
+            if content_type == "reel":
+                logger.info("[ContentCrew] Step 5 — Generating Reel video via MoviePy + Pollinations")
+                try:
+                    from src.tools.reel_video_creator import create_reel_video
+                    reel_script = None
+                    try:
+                        from src.agents.reel_script_agent import run_reel_script_agent
+                        reel_script = run_reel_script_agent(topic=topic, tone=tone)
+                    except Exception:
+                        pass
+                    if reel_script:
+                        image_url = await create_reel_video(
+                            hook=reel_script.hook,
+                            value_points=reel_script.value_points,
+                            cta=reel_script.cta,
+                            topic=topic,
+                            duration_seconds=reel_script.duration_seconds,
+                        )
+                    else:
+                        image_url = await create_reel_video(
+                            hook=topic,
+                            value_points=[visual_asset.overlay_text, "Study smart", "Stay consistent"],
+                            cta="Follow TOPPER IAS for daily UPSC tips",
+                            topic=topic,
+                        )
+                    if not image_url:
+                        image_url = await generate_image(prompt=visual_asset.image_prompt, topic=topic)
+                except Exception as e:
+                    logger.warning(f"[ContentCrew] Reel video failed ({e}), falling back to image")
+                    image_url = await generate_image(prompt=visual_asset.image_prompt, topic=topic)
+            else:
+                logger.info("[ContentCrew] Step 5 — Generating image via Pollinations/Stability AI → R2")
+                image_url = await generate_image(prompt=visual_asset.image_prompt, topic=topic)
 
             # Step 6: schedule
             logger.info("[ContentCrew] Step 6 — SchedulerAgent")
