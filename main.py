@@ -876,6 +876,33 @@ async def test_r2():
         return {"status": "error", "error": str(e)}
 
 
+@app.post("/admin/fix-post-images")
+async def fix_post_images():
+    """Replace placeholder image URLs with a real R2-hosted image."""
+    from sqlalchemy import text
+    from src.database import AsyncSessionLocal
+    from src.tools.canva_tool import create_quote_card, upload_canva_image
+    from src.tools.storage_tool import generate_filename
+
+    # Generate a real branded image
+    image_bytes = create_quote_card(
+        headline="UPSC Preparation Tips",
+        subtext="Daily insights by TOPPER IAS",
+        watermark="TOPPER IAS",
+    )
+    filename = generate_filename("topper-ias-default", content_type="post")
+    image_url = await upload_canva_image(image_bytes, filename)
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(text(
+            "UPDATE posts SET image_url = :url WHERE image_url LIKE '%placeholder%' OR image_url LIKE '%via.placeholder%' RETURNING id::text"
+        ), {"url": image_url})
+        updated = [row[0] for row in result.fetchall()]
+        await db.commit()
+
+    return {"updated": len(updated), "image_url": image_url}
+
+
 @app.post("/admin/reschedule-posts")
 async def reschedule_posts():
     """Move all past-dated pending posts to today 7:30 PM IST."""
