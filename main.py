@@ -799,6 +799,24 @@ async def sync_insights():
     return {"updated": updated}
 
 
+@app.post("/content/test-reel")
+async def test_reel(topic: str = "3 Mistakes UPSC Toppers Never Make"):
+    """Generate a test reel video and return the R2 URL."""
+    from src.tools.reel_video_creator import create_reel_video
+    url = await create_reel_video(
+        hook=f"Stop making these UPSC mistakes! 🚨",
+        value_points=[
+            f"Mistake 1: Ignoring NCERT basics for {topic}",
+            "Mistake 2: Skipping current affairs daily revision",
+            "Mistake 3: Not practicing answer writing",
+        ],
+        cta="Follow TOPPER IAS for daily UPSC tips 🎯",
+        topic=topic,
+        duration_seconds=30,
+    )
+    return {"status": "ok" if url else "failed", "video_url": url}
+
+
 @app.post("/content/generate-shorts")
 async def generate_shorts(topic: str = "UPSC Preparation Tips"):
     """Generate a YouTube Shorts package for a topic."""
