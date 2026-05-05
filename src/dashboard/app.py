@@ -558,13 +558,11 @@ HTML = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
     <!-- ANALYTICS -->
     <div id="page-analytics" class="page">
       <div class="page-title">📊 Analytics</div>
-      <div class="page-sub">WEEKLY PERFORMANCE</div>
-      <div class="row" style="grid-template-columns:2fr 1fr 1fr">
-        <div class="panel"><div class="ph"><span class="ph-title">Weekly Reach</span><span class="ph-meta">LAST 7 DAYS</span></div><div class="pb"><div class="bar-chart">{reach_bars_html()}</div></div></div>
-        <div class="panel"><div class="ph"><span class="ph-title">Admission Funnel</span><span class="ph-meta">THIS MONTH</span></div><div class="pb">{funnel_html(lf,FUNNEL_COLORS)}</div></div>
-        <div class="panel"><div class="ph"><span class="ph-title">Adaptiq Funnel</span><span class="ph-meta">THIS MONTH</span></div><div class="pb">{funnel_html(af,["#00e5c3"]*5)}</div></div>
+      <div class="page-sub">WEEKLY PERFORMANCE · AUTO-RUNS AT 11 PM DAILY</div>
+      <div id="analytics-content" style="color:#4a4f72;font-size:12px;padding:20px 0">Loading analytics...</div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button onclick="loadAnalytics()" style="background:#00e5c3;color:#000;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">🔄 Refresh</button>
       </div>
-      <button onclick="callAPI('/tasks/analytics','POST',{{}},'Analytics crew queued!')" style="background:#00e5c3;color:#000;border:none;border-radius:6px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;margin-top:4px">▶ Run Analytics Now</button>
     </div>
 
     <!-- AGENT JOBS -->
@@ -590,6 +588,7 @@ function nav(page, el) {{
   const titles = {{dashboard:'Live Dashboard',instagram:'Instagram',whatsapp:'WhatsApp',telegram:'Telegram',leads:'Leads',nurture:'Nurture Flows',adaptiq:'Adaptiq Funnel',analytics:'Analytics',jobs:'Agent Jobs'}};
   document.getElementById('page-title').textContent = titles[page] || page;
   if (page === 'adaptiq') setTimeout(loadAdaptiqFunnel, 50);
+  if (page === 'analytics') setTimeout(loadAnalytics, 50);
 }}
 
 function showToast(msg) {{
@@ -619,6 +618,39 @@ function sendTelegram() {{
   if (!msg) {{ showToast('Please type a message first'); return; }}
   showToast('Telegram broadcast sent!');
   document.getElementById('tg-msg').value = '';
+}}
+
+function loadAnalytics() {{
+  const el = document.getElementById('analytics-content');
+  if (!el) return;
+  el.innerHTML = '<div style="color:#4a4f72;font-size:11px">Loading...</div>';
+  fetch(API + '/stats/analytics-summary')
+    .then(r => r.json())
+    .then(data => {{
+      if (!data || data.error) {{
+        el.innerHTML = '<div style="color:#4a4f72;font-size:11px;padding:12px 0">No analytics data yet — runs nightly at 11 PM or click Run Analytics above.</div>';
+        return;
+      }}
+      let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="panel"><div class="ph"><span class="ph-title">Weekly Reach</span></div><div class="pb"><div style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:#00e5c3">${{(data.weekly_reach_total||0).toLocaleString()}}</div></div></div>
+        <div class="panel"><div class="ph"><span class="ph-title">Leads Generated</span></div><div class="pb"><div style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:#4facfe">${{data.weekly_leads_generated||0}}</div></div></div>
+      </div>`;
+      if (data.insight_text) {{
+        html += `<div class="panel" style="margin-bottom:10px"><div class="ph"><span class="ph-title">AI Insight</span></div><div class="pb" style="font-size:12px;line-height:1.6;color:#e8eaf6">${{data.insight_text}}</div></div>`;
+      }}
+      if (data.recommended_content_mix) {{
+        html += '<div class="panel"><div class="ph"><span class="ph-title">Recommended Content Mix</span><span class="ph-meta">NEXT WEEK</span></div><div class="pb">';
+        const COLORS = ['#00e5c3','#4facfe','#ffd166','#ff6b6b','#9d6fff'];
+        Object.entries(data.recommended_content_mix).forEach(([k,v],i) => {{
+          html += `<div class="fn-step"><div class="fn-lbl"><span class="fn-name">${{k}}</span><span class="fn-num">${{v}}%</span></div><div class="fn-bg"><div class="fn-fill" style="width:${{v}}%;background:${{COLORS[i%COLORS.length]}}"></div></div></div>`;
+        }});
+        html += '</div></div>';
+      }}
+      el.innerHTML = html;
+    }})
+    .catch(e => {{
+      el.innerHTML = '<div style="color:#4a4f72;font-size:11px;padding:12px 0">Analytics unavailable — run analytics to generate data.</div>';
+    }});
 }}
 
 function loadAdaptiqFunnel() {{

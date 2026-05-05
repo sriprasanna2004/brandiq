@@ -250,6 +250,24 @@ async def get_kpis():
     }
 
 
+@app.get("/stats/analytics-summary")
+async def get_analytics_summary():
+    """Return analytics summary from Redis or latest AgentJob payload."""
+    import json, re as _re
+    redis_url = os.getenv("REDIS_URL", "")
+    if redis_url:
+        try:
+            import redis as rl
+            url_fixed = _re.sub(r'ssl_cert_reqs=CERT_NONE', 'ssl_cert_reqs=none', redis_url, flags=_re.IGNORECASE)
+            r = rl.from_url(url_fixed, decode_responses=True)
+            raw = r.get("analytics:weekly_summary")
+            if raw:
+                return json.loads(raw)
+        except Exception:
+            pass
+    return {"error": "no_data"}
+
+
 @app.get("/stats/agent-status")
 async def get_agent_status():
     from sqlalchemy import select

@@ -45,8 +45,12 @@ async def generate_image(prompt: str, topic: str) -> str:
         )
 
     if not resp.is_success:
+        error_body = resp.text
+        if resp.status_code == 429 or "insufficient_balance" in error_body:
+            logger.warning(f"[Visual] Stability AI out of credits, using placeholder image")
+            return f"https://via.placeholder.com/1024x1024/0d0f1a/00e5c3?text=TOPPER+IAS"
         raise Exception(
-            f"Stability AI error: status={resp.status_code} body={resp.text}"
+            f"Stability AI error: status={resp.status_code} body={error_body}"
         )
 
     data = resp.json()
