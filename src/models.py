@@ -36,6 +36,10 @@ class LeadSource(str, enum.Enum):
 class Platform(str, enum.Enum):
     instagram = "instagram"
     telegram = "telegram"
+    reel = "reel"
+    whatsapp = "whatsapp"
+    story = "story"
+    carousel = "carousel"
 
 
 class PostStatus(str, enum.Enum):

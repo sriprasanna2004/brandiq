@@ -954,7 +954,7 @@ async def fix_enums():
     enums = [
         ("leadstatus",     "hot,warm,cold,opted_out"),
         ("leadsource",     "instagram_dm,instagram_comment,telegram"),
-        ("platform",       "instagram,telegram"),
+        ("platform",       "instagram,telegram,reel,whatsapp,story,carousel"),
         ("poststatus",     "pending,approved,posted,failed"),
         ("jobstatus",      "pending,running,success,failed,dead_letter"),
         ("sequencestatus", "sent,failed,opted_out"),
@@ -968,7 +968,16 @@ async def fix_enums():
                 await conn.execute(f"CREATE TYPE {name} AS ENUM ({vals})")
                 results[name] = "created"
             except Exception as e:
-                results[name] = f"skipped: {str(e)[:60]}"
+                # Try adding missing values to existing enum
+                if "already exists" in str(e):
+                    for v in values.split(","):
+                        try:
+                            await conn.execute(f"ALTER TYPE {name} ADD VALUE IF NOT EXISTS '{v}'")
+                        except Exception:
+                            pass
+                    results[name] = "updated"
+                else:
+                    results[name] = f"error: {str(e)[:60]}"
     finally:
         await conn.close()
     return results

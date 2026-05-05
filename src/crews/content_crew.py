@@ -42,7 +42,17 @@ async def run_content_crew(week_start: date) -> dict:
             first_topic = content_plan.topics[0] if content_plan.topics else {}
             topic = first_topic.get("topic", "UPSC Preparation Tips")
             tone = first_topic.get("tone", "motivational")
-            logger.info(f"[ContentCrew] Today's topic: '{topic}' tone='{tone}'")
+            content_type = first_topic.get("content_type", "post")  # reel/carousel/story/post
+            # Map content_type to Platform enum
+            platform_map = {
+                "reel": Platform.reel,
+                "carousel": Platform.carousel,
+                "story": Platform.story,
+                "whatsapp": Platform.whatsapp,
+                "telegram": Platform.telegram,
+            }
+            platform = platform_map.get(content_type, Platform.instagram)
+            logger.info(f"[ContentCrew] Today's topic: '{topic}' tone='{tone}' type='{content_type}'")
 
             # Step 3: write captions
             logger.info("[ContentCrew] Step 3 — ContentWriterAgent")
@@ -66,7 +76,7 @@ async def run_content_crew(week_start: date) -> dict:
             # Step 7: save Post to DB
             post = Post(
                 id=uuid.uuid4(),
-                platform=Platform.instagram,
+                platform=platform,
                 caption_a=caption_a,
                 caption_b=caption_b,
                 image_url=image_url,
