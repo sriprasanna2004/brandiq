@@ -351,17 +351,26 @@ async def get_calendar():
     from src.models import Post
     from datetime import timezone, timedelta
     today = datetime.now(timezone.utc)
-    week_start = today - timedelta(days=today.weekday())
-    week_end = week_start + timedelta(days=7)
+    # Show 3 days back + 7 days forward so recent posts always appear
+    week_start = today - timedelta(days=3)
+    week_end = today + timedelta(days=7)
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(Post).where(Post.scheduled_at >= week_start, Post.scheduled_at <= week_end).order_by(Post.scheduled_at))
+        result = await db.execute(
+            select(Post)
+            .where(Post.scheduled_at >= week_start, Post.scheduled_at <= week_end)
+            .order_by(Post.scheduled_at)
+        )
         posts = result.scalars().all()
     calendar = {}
     for p in posts:
         day = p.scheduled_at.strftime("%Y-%m-%d")
         if day not in calendar:
             calendar[day] = []
-        calendar[day].append({"caption": p.caption_a[:30], "platform": p.platform.value, "status": p.status.value})
+        calendar[day].append({
+            "caption": p.caption_a[:30],
+            "platform": p.platform.value,
+            "status": p.status.value,
+        })
     return calendar
 
 
