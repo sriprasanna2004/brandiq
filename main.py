@@ -707,6 +707,25 @@ async def debug():
     }
 
 
+@app.post("/admin/reschedule-posts")
+async def reschedule_posts():
+    """Move all past-dated pending posts to today 7:30 PM IST."""
+    from sqlalchemy import text
+    from src.database import AsyncSessionLocal
+    from datetime import timezone, timedelta
+    now = datetime.now(timezone.utc)
+    today_730pm = now.replace(hour=14, minute=0, second=0, microsecond=0)  # 14:00 UTC = 19:30 IST
+    if now > today_730pm:
+        today_730pm = today_730pm + timedelta(days=1)
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(text(
+            "UPDATE posts SET scheduled_at = :t WHERE scheduled_at < NOW() AND status = 'pending' RETURNING id::text"
+        ), {"t": today_730pm})
+        updated = [row[0] for row in result.fetchall()]
+        await db.commit()
+    return {"updated": len(updated), "new_time": today_730pm.isoformat()}
+
+
 @app.post("/admin/create-tables")
 async def create_tables():
     """Create all missing tables using SQLAlchemy metadata."""
