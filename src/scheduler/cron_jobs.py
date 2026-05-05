@@ -234,6 +234,16 @@ def start_scheduler() -> BackgroundScheduler:
         replace_existing=True,
     )
 
+    # Sync Instagram Insights — every day at 10:00 PM
+    scheduler.add_job(
+        lambda: __import__('asyncio').run(__import__('src.tools.analytics_tool', fromlist=['sync_post_analytics']).sync_post_analytics()),
+        trigger="cron",
+        hour=22,
+        minute=0,
+        id="daily_insights_sync",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info("[Scheduler] APScheduler started with 8 cron jobs")
     return scheduler

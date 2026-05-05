@@ -450,6 +450,7 @@ HTML = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
     <div class="sb-item" onclick="nav('adaptiq',this)">🎯 Adaptiq Funnel</div>
     <div class="sb-group">Reports</div>
     <div class="sb-item" onclick="nav('analytics',this)">📊 Analytics</div>
+    <div class="sb-item" onclick="nav('revenue',this)">₹ Revenue</div>
     <div class="sb-item" onclick="nav('jobs',this)">🤖 Agent Jobs</div>
   </div>
   <div class="sb-foot"><span class="pulse-dot"></span><span class="sb-status">9/9 AGENTS LIVE</span></div>
@@ -565,6 +566,32 @@ HTML = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
       </div>
     </div>
 
+    <!-- REVENUE -->
+    <div id="page-revenue" class="page">
+      <div class="page-title">₹ Revenue</div>
+      <div class="page-sub">REAL ADMISSIONS + ADAPTIQ CONVERSIONS</div>
+      <div id="revenue-content">Loading...</div>
+      <div style="margin-top:12px">
+        <div style="font-family:Syne,sans-serif;font-size:13px;font-weight:700;margin-bottom:8px">Record New Admission</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="adm-name" placeholder="Student name" style="background:#111320;border:1px solid #1c1f32;border-radius:6px;color:#e8eaf6;padding:7px 12px;font-size:12px;flex:1;min-width:150px">
+          <select id="adm-course" style="background:#111320;border:1px solid #1c1f32;border-radius:6px;color:#e8eaf6;padding:7px 12px;font-size:12px">
+            <option value="full_batch">Full Batch ₹25,000</option>
+            <option value="prelims">Prelims ₹8,000</option>
+            <option value="test_series">Test Series ₹3,000</option>
+            <option value="mentorship">Mentorship ₹15,000</option>
+          </select>
+          <select id="adm-source" style="background:#111320;border:1px solid #1c1f32;border-radius:6px;color:#e8eaf6;padding:7px 12px;font-size:12px">
+            <option value="instagram">Instagram</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="direct">Direct</option>
+            <option value="telegram">Telegram</option>
+          </select>
+          <button onclick="recordAdmission()" style="background:#00e5c3;color:#000;border:none;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">Record ₹</button>
+        </div>
+      </div>
+    </div>
+
     <!-- AGENT JOBS -->
     <div id="page-jobs" class="page">
       <div class="page-title">🤖 Agent Jobs</div>
@@ -589,6 +616,7 @@ function nav(page, el) {{
   document.getElementById('page-title').textContent = titles[page] || page;
   if (page === 'adaptiq') setTimeout(loadAdaptiqFunnel, 50);
   if (page === 'analytics') setTimeout(loadAnalytics, 50);
+  if (page === 'revenue') setTimeout(loadRevenue, 50);
 }}
 
 function showToast(msg) {{
@@ -618,6 +646,53 @@ function sendTelegram() {{
   if (!msg) {{ showToast('Please type a message first'); return; }}
   showToast('Telegram broadcast sent!');
   document.getElementById('tg-msg').value = '';
+}}
+
+function loadRevenue() {{
+  const el = document.getElementById('revenue-content');
+  if (!el) return;
+  fetch(API + '/revenue?days=30')
+    .then(r => r.json())
+    .then(data => {{
+      const fmt = n => n >= 100000 ? '₹' + (n/100000).toFixed(1) + 'L' : n >= 1000 ? '₹' + (n/1000).toFixed(0) + 'K' : '₹' + n;
+      let html = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+        <div class="panel"><div class="ph"><span class="ph-title">TOPPER IAS</span></div><div class="pb"><div style="font-family:Syne,sans-serif;font-size:26px;font-weight:800;color:#9d6fff">${{fmt(data.topper_ias?.total||0)}}</div><div style="font-size:10px;color:#4a4f72;margin-top:4px">Last 30 days</div></div></div>
+        <div class="panel"><div class="ph"><span class="ph-title">Adaptiq</span></div><div class="pb"><div style="font-family:Syne,sans-serif;font-size:26px;font-weight:800;color:#00e5c3">${{fmt(data.adaptiq?.total||0)}}</div><div style="font-size:10px;color:#4a4f72;margin-top:4px">Subscriptions</div></div></div>
+        <div class="panel"><div class="ph"><span class="ph-title">Combined</span></div><div class="pb"><div style="font-family:Syne,sans-serif;font-size:26px;font-weight:800;color:#ffd166">${{fmt(data.combined_total||0)}}</div><div style="font-size:10px;color:#4a4f72;margin-top:4px">Total revenue</div></div></div>
+      </div>`;
+      if (data.topper_ias?.breakdown?.length) {{
+        html += '<div class="panel"><div class="ph"><span class="ph-title">Admissions by Course</span></div><div class="pb">';
+        data.topper_ias.breakdown.forEach(b => {{
+          html += `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #1c1f32;font-size:11px"><span style="color:#4a4f72">${{b.course_type}}</span><span>${{b.count}} admissions · <strong style="color:#9d6fff">${{fmt(b.total||0)}}</strong></span></div>`;
+        }});
+        html += '</div></div>';
+      }} else {{
+        html += '<div style="color:#4a4f72;font-size:11px;padding:12px 0">No admissions recorded yet. Use the form below to record your first admission.</div>';
+      }}
+      el.innerHTML = html;
+    }})
+    .catch(() => {{ if(document.getElementById('revenue-content')) document.getElementById('revenue-content').innerHTML = '<div style="color:#4a4f72;font-size:11px">Revenue data unavailable</div>'; }});
+}}
+
+const COURSE_FEES = {{full_batch:25000,prelims:8000,test_series:3000,mentorship:15000}};
+function recordAdmission() {{
+  const name = document.getElementById('adm-name').value.trim();
+  const course = document.getElementById('adm-course').value;
+  const source = document.getElementById('adm-source').value;
+  if (!name) {{ showToast('Enter student name'); return; }}
+  const fee = COURSE_FEES[course] || 25000;
+  fetch(API + '/admissions', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{student_name: name, course_type: course, fee_paid: fee, source: source}})
+  }})
+  .then(r => r.json())
+  .then(() => {{
+    showToast('✓ Admission recorded — ₹' + fee.toLocaleString());
+    document.getElementById('adm-name').value = '';
+    setTimeout(loadRevenue, 500);
+  }})
+  .catch(e => showToast('Error: ' + e.message));
 }}
 
 function loadAnalytics() {{

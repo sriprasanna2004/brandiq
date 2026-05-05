@@ -682,6 +682,120 @@ async def list_trials(limit: int = 20):
         ]
 
 
+@app.get("/revenue")
+async def get_revenue(days: int = 30):
+    """Real revenue from admissions table + Adaptiq conversions."""
+    from sqlalchemy import text
+    from src.database import AsyncSessionLocal
+    from datetime import timezone, timedelta
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    async with AsyncSessionLocal() as db:
+        try:
+            r = await db.execute(text("""
+                SELECT course_type, COUNT(*) as count, SUM(fee_paid) as total
+                FROM admissions WHERE payment_date >= :since
+                GROUP BY course_type ORDER BY total DESC
+            """), {"since": since})
+            admissions = [dict(row._mapping) for row in r.fetchall()]
+            r2 = await db.execute(text("SELECT SUM(fee_paid) FROM admissions WHERE payment_date >= :since"), {"since": since})
+            topper_total = r2.scalar() or 0
+        except Exception:
+            admissions = []; topper_total = 0
+        try:
+            r3 = await db.execute(text("""
+                SELECT plan, COUNT(*) as count FROM adaptiq_trials
+                WHERE converted_at >= :since GROUP BY plan
+            """), {"since": since})
+            adaptiq_plans = [dict(row._mapping) for row in r3.fetchall()]
+            adaptiq_total = sum(
+                (1999 if "annual" in (p.get("plan") or "").lower() else 299) * p["count"]
+                for p in adaptiq_plans
+            )
+        except Exception:
+            adaptiq_plans = []; adaptiq_total = 0
+    return {
+        "period_days": days,
+        "topper_ias": {"total": topper_total, "breakdown": admissions},
+        "adaptiq": {"total": adaptiq_total, "plans": adaptiq_plans},
+        "combined_total": topper_total + adaptiq_total,
+    }
+
+
+class AdmissionRequest(BaseModel):
+    student_name: str
+    course_type: str = "full_batch"
+    fee_paid: int
+    source: str = "direct"
+    lead_id: str = ""
+    notes: str = ""
+
+
+@app.post("/admissions")
+async def record_admission(body: AdmissionRequest):
+    """Record a real admission for revenue tracking."""
+    from src.database import AsyncSessionLocal
+    from src.models import Admission
+    import uuid
+    async with AsyncSessionLocal() as db:
+        admission = Admission(
+            id=uuid.uuid4(),
+            student_name=body.student_name,
+            course_type=body.course_type,
+            fee_paid=body.fee_paid,
+            source=body.source,
+            lead_id=uuid.UUID(body.lead_id) if body.lead_id else None,
+            notes=body.notes or None,
+        )
+        db.add(admission)
+        await db.commit()
+        logger.info(f"[Revenue] Admission recorded: {body.student_name} ₹{body.fee_paid}")
+    return {"status": "ok", "id": str(admission.id)}
+
+
+@app.get("/admissions")
+async def list_admissions(limit: int = 20):
+    from sqlalchemy import text
+    from src.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        try:
+            r = await db.execute(text(
+                "SELECT id::text,student_name,course_type,fee_paid,source,payment_date::text FROM admissions ORDER BY payment_date DESC LIMIT :l"
+            ), {"l": limit})
+            return [dict(row._mapping) for row in r.fetchall()]
+        except Exception:
+            return []
+
+
+@app.post("/analytics/sync-insights")
+async def sync_insights():
+    """Pull Instagram Insights for all posted posts."""
+    from src.tools.analytics_tool import sync_post_analytics
+    updated = await sync_post_analytics()
+    return {"updated": updated}
+
+
+@app.post("/content/generate-shorts")
+async def generate_shorts(topic: str = "UPSC Preparation Tips"):
+    """Generate a YouTube Shorts package for a topic."""
+    from src.tools.youtube_tool import generate_shorts_package
+    package = await generate_shorts_package(topic)
+    return package
+
+
+@app.post("/content/generate-carousel")
+async def generate_carousel_endpoint(topic: str = "UPSC Tips", slides: int = 5):
+    """Generate a branded carousel using Canva tool."""
+    from src.agents.content_writer_agent import run_content_writer_agent
+    from src.tools.canva_tool import generate_carousel
+    content = run_content_writer_agent(topic=topic, tone="educational")
+    slide_data = [
+        {"title": f"Tip {i+1}", "body": content.caption_a[i*60:(i+1)*60]}
+        for i in range(min(slides, 5))
+    ]
+    urls = await generate_carousel(slide_data, topic=topic)
+    return {"topic": topic, "slides": len(urls), "urls": urls}
+
+
 # ---------------------------------------------------------------------------
 # Webhooks
 # ---------------------------------------------------------------------------

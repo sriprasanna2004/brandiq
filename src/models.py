@@ -138,6 +138,21 @@ class WhatsappSequence(Base):
     lead: Mapped["Lead"] = relationship(back_populates="sequences")
 
 
+class Admission(Base):
+    """Tracks real admissions for accurate revenue reporting."""
+    __tablename__ = "admissions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("leads.id"), nullable=True)
+    student_name: Mapped[str] = mapped_column(String)
+    course_type: Mapped[str] = mapped_column(String)  # full_batch, prelims, test_series, mentorship
+    fee_paid: Mapped[int] = mapped_column(Integer)     # in INR
+    payment_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    source: Mapped[str | None] = mapped_column(String, nullable=True)  # instagram, whatsapp, direct
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
 class AdaptiqTrial(Base):
     __tablename__ = "adaptiq_trials"
 
