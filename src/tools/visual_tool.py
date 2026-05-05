@@ -20,6 +20,10 @@ BRAND_SUFFIX = (
 
 async def generate_image(prompt: str, topic: str) -> str:
     api_key = os.getenv("STABILITY_API_KEY", "")
+    if not api_key or api_key == "REPLACE_ME":
+        logger.warning("[Visual] STABILITY_API_KEY not set, using placeholder")
+        return f"https://via.placeholder.com/1024x1024.png?text={topic.replace(' ', '+')}"
+
     full_prompt = f"{prompt}, {BRAND_SUFFIX}"
 
     async with httpx.AsyncClient(timeout=60) as client:
@@ -49,13 +53,26 @@ async def generate_image(prompt: str, topic: str) -> str:
     image_b64 = data["artifacts"][0]["base64"]
     image_bytes = base64.b64decode(image_b64)
 
-    # Add watermark before uploading
+    # Add watermark
     watermarked = add_watermark(image_bytes)
 
-    filename = generate_filename(topic, content_type="post")
-    url = upload_media(watermarked, filename, content_type="image/jpeg")
-    logger.info(f"[Visual] Image generated and uploaded for topic='{topic}': {url}")
-    return url
+    # Try R2 upload — fall back to base64 data URL if R2 not configured
+    r2_account = os.getenv("R2_ACCOUNT_ID", "REPLACE_ME")
+    if r2_account and r2_account != "REPLACE_ME":
+        try:
+            from src.tools.storage_tool import generate_filename, upload_media
+            filename = generate_filename(topic, content_type="post")
+            url = upload_media(watermarked, filename, content_type="image/jpeg")
+            logger.info(f"[Visual] Image uploaded to R2: {url}")
+            return url
+        except Exception as e:
+            logger.warning(f"[Visual] R2 upload failed ({e}), using base64 data URL")
+
+    # Fallback: return base64 data URL (works without R2)
+    b64 = base64.b64encode(watermarked).decode()
+    data_url = f"data:image/jpeg;base64,{b64}"
+    logger.info(f"[Visual] Image generated as base64 data URL for topic='{topic}'")
+    return data_url
 
 
 def add_watermark(image_bytes: bytes, text: str = "TOPPER IAS") -> bytes:
