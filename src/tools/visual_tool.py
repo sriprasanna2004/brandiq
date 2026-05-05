@@ -20,63 +20,98 @@ BRAND_SUFFIX = (
 
 async def generate_image(prompt: str, topic: str) -> str:
     api_key = os.getenv("STABILITY_API_KEY", "")
-    if not api_key or api_key == "REPLACE_ME":
-        logger.warning("[Visual] STABILITY_API_KEY not set, using placeholder")
-        return f"https://via.placeholder.com/1024x1024.png?text={topic.replace(' ', '+')}"
 
-    full_prompt = f"{prompt}, {BRAND_SUFFIX}"
-
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(
-            STABILITY_API_URL,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            json={
-                "text_prompts": [{"text": full_prompt, "weight": 1.0}],
-                "cfg_scale": 7,
-                "height": 1024,
-                "width": 1024,
-                "samples": 1,
-                "steps": 30,
-            },
-        )
-
-    if not resp.is_success:
-        error_body = resp.text
-        if resp.status_code == 429 or "insufficient_balance" in error_body:
-            logger.warning(f"[Visual] Stability AI out of credits, using placeholder image")
-            return f"https://via.placeholder.com/1024x1024/0d0f1a/00e5c3?text=TOPPER+IAS"
-        raise Exception(
-            f"Stability AI error: status={resp.status_code} body={error_body}"
-        )
-
-    data = resp.json()
-    image_b64 = data["artifacts"][0]["base64"]
-    image_bytes = base64.b64decode(image_b64)
-
-    # Add watermark
-    watermarked = add_watermark(image_bytes)
-
-    # Try R2 upload — fall back to base64 data URL if R2 not configured
-    r2_account = os.getenv("R2_ACCOUNT_ID", "REPLACE_ME")
-    if r2_account and r2_account != "REPLACE_ME":
+    # Try Stability AI first if credits available
+    if api_key and api_key != "REPLACE_ME":
         try:
-            from src.tools.storage_tool import generate_filename, upload_media
-            filename = generate_filename(topic, content_type="post")
-            url = upload_media(watermarked, filename, content_type="image/jpeg")
-            logger.info(f"[Visual] Image uploaded to R2: {url}")
-            return url
+            full_prompt = f"{prompt}, {BRAND_SUFFIX}"
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    STABILITY_API_URL,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                    json={
+                        "text_prompts": [{"text": full_prompt, "weight": 1.0}],
+                        "cfg_scale": 7,
+                        "height": 1024,
+                        "width": 1024,
+                        "samples": 1,
+                        "steps": 30,
+                    },
+                )
+            if resp.is_success:
+                data = resp.json()
+                image_b64 = data["artifacts"][0]["base64"]
+                image_bytes = base64.b64decode(image_b64)
+                watermarked = add_watermark(image_bytes)
+                r2_account = os.getenv("R2_ACCOUNT_ID", "REPLACE_ME")
+                if r2_account and r2_account != "REPLACE_ME":
+                    try:
+                        from src.tools.storage_tool import generate_filename, upload_media
+                        filename = generate_filename(topic, content_type="post")
+                        url = upload_media(watermarked, filename, content_type="image/jpeg")
+                        logger.info(f"[Visual] Stability AI image uploaded to R2: {url}")
+                        return url
+                    except Exception as e:
+                        logger.warning(f"[Visual] R2 upload failed: {e}")
+                b64 = base64.b64encode(watermarked).decode()
+                return f"data:image/jpeg;base64,{b64}"
+            elif resp.status_code == 429 or "insufficient_balance" in resp.text:
+                logger.warning("[Visual] Stability AI out of credits, falling back to Pollinations")
+            else:
+                logger.warning(f"[Visual] Stability AI error {resp.status_code}, falling back")
         except Exception as e:
-            logger.warning(f"[Visual] R2 upload failed ({e}), using base64 data URL")
+            logger.warning(f"[Visual] Stability AI exception: {e}, falling back")
 
-    # Fallback: return base64 data URL (works without R2)
-    b64 = base64.b64encode(watermarked).decode()
-    data_url = f"data:image/jpeg;base64,{b64}"
-    logger.info(f"[Visual] Image generated as base64 data URL for topic='{topic}'")
-    return data_url
+    # Free fallback: Pollinations.AI — no API key, no signup needed
+    return await _generate_pollinations(prompt, topic)
+
+
+async def _generate_pollinations(prompt: str, topic: str) -> str:
+    """Generate image using Pollinations.AI (completely free, no key needed)."""
+    import urllib.parse
+    full_prompt = f"{prompt}, {BRAND_SUFFIX}, dark purple theme, TOPPER IAS"
+    encoded = urllib.parse.quote(full_prompt)
+    # Pollinations returns a real image at this URL
+    image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true&seed=42"
+
+    logger.info(f"[Visual] Generating via Pollinations.AI for topic='{topic}'")
+    try:
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            resp = await client.get(image_url)
+        if not resp.is_success:
+            raise Exception(f"Pollinations returned {resp.status_code}")
+
+        image_bytes = resp.content
+        watermarked = add_watermark(image_bytes)
+
+        # Upload to R2 if configured
+        r2_account = os.getenv("R2_ACCOUNT_ID", "REPLACE_ME")
+        if r2_account and r2_account != "REPLACE_ME":
+            try:
+                from src.tools.storage_tool import generate_filename, upload_media
+                filename = generate_filename(topic, content_type="post")
+                url = upload_media(watermarked, filename, content_type="image/jpeg")
+                logger.info(f"[Visual] Pollinations image uploaded to R2: {url}")
+                return url
+            except Exception as e:
+                logger.warning(f"[Visual] R2 upload failed: {e}")
+
+        # Return the Pollinations URL directly (Instagram can fetch it)
+        logger.info(f"[Visual] Using Pollinations URL directly: {image_url[:80]}")
+        return image_url
+
+    except Exception as e:
+        logger.error(f"[Visual] Pollinations failed: {e}")
+        # Last resort: Canva tool branded image
+        from src.tools.canva_tool import create_quote_card, upload_canva_image
+        from src.tools.storage_tool import generate_filename
+        image_bytes = create_quote_card(headline=topic, subtext="UPSC Preparation | TOPPER IAS")
+        filename = generate_filename(topic, content_type="post")
+        return await upload_canva_image(image_bytes, filename)
 
 
 def add_watermark(image_bytes: bytes, text: str = "TOPPER IAS") -> bytes:
