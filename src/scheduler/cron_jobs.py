@@ -14,7 +14,16 @@ from src.models import Lead, LeadStatus, Post, PostStatus, WhatsappSequence, Seq
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _today_start() -> datetime:
+def _run_async(coro):
+    """Run an async coroutine safely from a sync APScheduler job."""
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+        asyncio.set_event_loop(None)
     d = date.today()
     return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
 
@@ -61,7 +70,7 @@ def _trigger_community_broadcast():
         except Exception as e:
             logger.error(f"[Cron] Community broadcast failed: {e}")
 
-    asyncio.run(_run())
+    _run_async(_run())
 
 
 def _trigger_daily_summary():
@@ -104,7 +113,7 @@ def _trigger_daily_summary():
             f"wa={whatsapp_sent}, trials={trials_started}"
         )
 
-    asyncio.run(_run())
+    _run_async(_run())
 
 
 def _trigger_trial_sequences():
@@ -115,7 +124,7 @@ def _trigger_trial_sequences():
         count = await run_trial_sequences()
         logger.info(f"[Cron] Adaptiq trial sequences sent: {count}")
 
-    asyncio.run(_run())
+    _run_async(_run())
 
 
 def _trigger_nurture_sequences():
@@ -132,7 +141,7 @@ def _trigger_nurture_sequences():
             )
             return result.scalars().all()
 
-    leads = asyncio.run(_query())
+    leads = _run_async(_query())
     now = datetime.now(timezone.utc)
 
     for lead in leads:
@@ -236,7 +245,7 @@ def start_scheduler() -> BackgroundScheduler:
 
     # Sync Instagram Insights — every day at 10:00 PM
     scheduler.add_job(
-        lambda: __import__('asyncio').run(__import__('src.tools.analytics_tool', fromlist=['sync_post_analytics']).sync_post_analytics()),
+        lambda: _run_async(__import__('src.tools.analytics_tool', fromlist=['sync_post_analytics']).sync_post_analytics()),
         trigger="cron",
         hour=22,
         minute=0,
@@ -247,3 +256,5 @@ def start_scheduler() -> BackgroundScheduler:
     scheduler.start()
     logger.info("[Scheduler] APScheduler started with 8 cron jobs")
     return scheduler
+
+
