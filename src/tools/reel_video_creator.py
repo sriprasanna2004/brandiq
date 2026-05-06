@@ -212,7 +212,7 @@ async def create_reel_video(
         return url
 
     except Exception as e:
-        logger.error(f"[ReelVideo] Failed: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
+        import traceback as tb
+        err = f"{e}\n{tb.format_exc()[-400:]}"
+        logger.error(f"[ReelVideo] Failed: {err}")
         return None

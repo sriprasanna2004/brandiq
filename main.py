@@ -852,8 +852,9 @@ async def test_reel(topic: str = "3 Mistakes UPSC Toppers Never Make"):
         )
         return {"status": "ok" if url else "failed", "video_url": url, "debug": errors}
     except Exception as e:
-        errors.append(f"reel FAILED: {e}\n{traceback.format_exc()[-300:]}")
-        return {"status": "error", "errors": errors}
+        import traceback as tb
+        errors.append(f"reel FAILED: {e}\n{tb.format_exc()[-500:]}")
+        return {"status": "error", "errors": errors, "debug": errors}
 
 
 @app.post("/content/generate-shorts")
