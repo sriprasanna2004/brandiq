@@ -26,16 +26,18 @@ async def publish_pending_posts() -> list[str]:
 
         for post in posts:
             try:
-                # Check if it's a video (reel) or image post
-                if post.image_url.endswith(".mp4") or post.platform.value == "reel":
+                # Reel platform with image URL → post as image with reel caption
+                # Reel platform with .mp4 URL → post as actual video reel
+                if post.image_url.endswith(".mp4"):
                     from src.tools.reel_publisher import upload_reel
                     ig_post_id = await upload_reel(
                         video_url=post.image_url,
                         caption=post.caption_a,
                     )
                     if not ig_post_id:
-                        raise Exception("Reel upload returned None")
+                        raise Exception("Reel video upload returned None")
                 else:
+                    # Image post (including reel-script posts with image)
                     container_id = await upload_image_to_instagram(post.image_url)
                     ig_post_id = await create_single_post(container_id, post.caption_a)
 
