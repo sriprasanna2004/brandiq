@@ -2,7 +2,7 @@ import os
 import json
 from typing import Optional
 from pydantic import BaseModel
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
@@ -63,10 +63,10 @@ class AdaptiqMessage(BaseModel):
     email_subject: Optional[str] = None       # email subject line
 
 
-def _get_llm() -> ChatGoogleGenerativeAI:
-    return ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
+def _get_llm() -> ChatGroq:
+    return ChatGroq(
+        model="llama-3.3-70b-versatile",
+        groq_api_key=os.getenv("GROQ_API_KEY"),
         temperature=0.7,
     )
 
@@ -127,4 +127,5 @@ def run_adaptiq_promo_agent(
     except Exception as e:
         logger.error(f"[AdaptiqPromoAgent] Failed to parse response: {e}\nRaw: {raw}")
         raise
+
 

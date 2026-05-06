@@ -2,7 +2,7 @@ import os
 import json
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
@@ -13,10 +13,10 @@ class ScheduleDecision(BaseModel):
     expected_reach: int
 
 
-def _get_llm() -> ChatGoogleGenerativeAI:
-    return ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
+def _get_llm() -> ChatGroq:
+    return ChatGroq(
+        model="llama-3.3-70b-versatile",
+        groq_api_key=os.getenv("GROQ_API_KEY"),
         temperature=0.3,
     )
 
@@ -84,4 +84,5 @@ def run_scheduler_agent(analytics_data: list[dict] | None = None) -> ScheduleDec
             reason="Default optimal evening slot for UPSC audience",
             expected_reach=5000,
         )
+
 

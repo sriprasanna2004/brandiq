@@ -3,7 +3,7 @@ import json
 from datetime import date
 from typing import Optional
 from pydantic import BaseModel
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
@@ -19,10 +19,10 @@ class ContentPlan(BaseModel):
     topics: list[dict]  # 7 dicts: day, topic, content_type, tone
 
 
-def _get_llm() -> ChatGoogleGenerativeAI:
-    return ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
+def _get_llm() -> ChatGroq:
+    return ChatGroq(
+        model="llama-3.3-70b-versatile",
+        groq_api_key=os.getenv("GROQ_API_KEY"),
         temperature=0.7,
     )
 
@@ -86,4 +86,5 @@ def run_strategy_agent(week_start: Optional[date] = None) -> ContentPlan:
     except Exception as e:
         logger.error(f"[StrategyAgent] Failed to parse response: {e}\nRaw: {raw}")
         raise
+
 
