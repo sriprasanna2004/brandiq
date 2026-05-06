@@ -2,7 +2,7 @@ import os
 import json
 from typing import Literal
 from pydantic import BaseModel
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
@@ -15,10 +15,10 @@ class ReelScript(BaseModel):
     duration_seconds: Literal[30, 60]
 
 
-def _get_llm() -> ChatGroq:
-    return ChatGroq(
-        model="llama-3.3-70b-versatile",
-        groq_api_key=os.getenv("GROQ_API_KEY"),
+def _get_llm() -> ChatGoogleGenerativeAI:
+    return ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash",
+        google_api_key=os.getenv("GOOGLE_API_KEY"),
         temperature=0.8,
     )
 
