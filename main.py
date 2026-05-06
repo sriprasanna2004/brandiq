@@ -863,6 +863,46 @@ async def test_reel(topic: str = "3 Mistakes UPSC Toppers Never Make"):
         return {"status": "error", "errors": errors, "debug": errors}
 
 
+@app.post("/content/generate-reel-post")
+async def generate_reel_post(topic: str = "3 Mistakes UPSC Toppers Never Make"):
+    """Generate a reel script post and save to DB with platform=reel."""
+    import uuid as _uuid
+    from datetime import timezone, timedelta
+    from src.database import AsyncSessionLocal
+    from src.models import Post, Platform, PostStatus
+    from src.agents.reel_script_agent import run_reel_script_agent
+    from src.tools.visual_tool import generate_image
+    from src.agents.visual_creator_agent import run_visual_creator_agent
+
+    try:
+        script = run_reel_script_agent(topic=topic, tone="motivational")
+        caption = (
+            f"🎬 {script.hook}\n\n"
+            + "\n".join(f"✅ {pt}" for pt in script.value_points)
+            + f"\n\n👉 {script.cta}\n\n"
+            "#UPSC #IAS #TopperIAS #UPSCPreparation #CivilServices "
+            "#IASAspirant #UPSCMotivation #StudyTips #Adaptiq #ReelScript"
+        )
+        visual = run_visual_creator_agent(caption=script.hook, topic=topic)
+        image_url = await generate_image(prompt=visual.image_prompt, topic=topic)
+        now = datetime.now(timezone.utc)
+        scheduled = now.replace(hour=19, minute=30, second=0, microsecond=0)
+        if now > scheduled:
+            scheduled = scheduled + timedelta(days=1)
+        async with AsyncSessionLocal() as db:
+            post = Post(
+                id=_uuid.uuid4(), platform=Platform.reel,
+                caption_a=caption[:2200], caption_b=script.caption,
+                image_url=image_url, scheduled_at=scheduled,
+                status=PostStatus.pending,
+            )
+            db.add(post)
+            await db.commit()
+            return {"status": "ok", "post_id": str(post.id), "hook": script.hook, "platform": "reel"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:200]}
+
+
 @app.post("/content/generate-shorts")
 async def generate_shorts(topic: str = "UPSC Preparation Tips"):
     """Generate a YouTube Shorts package for a topic."""
