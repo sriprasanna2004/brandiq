@@ -48,6 +48,18 @@ async def publish_pending_posts() -> list[str]:
                 published_ids.append(ig_post_id)
                 logger.info(f"[Publisher] Published post {post.id} → ig_post_id={ig_post_id}")
 
+                # Also post to Facebook Page
+                try:
+                    from src.tools.facebook_tool import post_to_facebook
+                    fb_post_id = await post_to_facebook(
+                        message=post.caption_a,
+                        image_url=post.image_url,
+                    )
+                    if fb_post_id:
+                        logger.info(f"[Publisher] Also posted to Facebook: {fb_post_id}")
+                except Exception as fb_err:
+                    logger.warning(f"[Publisher] Facebook post failed (non-critical): {fb_err}")
+
             except Exception as e:
                 logger.error(f"[Publisher] Failed to publish post {post.id}: {e}")
                 post.status = PostStatus.failed
@@ -73,6 +85,16 @@ async def publish_single_post(post_id: str) -> bool:
             await db.commit()
 
             logger.info(f"[Publisher] Immediately published post {post_id} → ig_post_id={ig_post_id}")
+
+            # Also post to Facebook
+            try:
+                from src.tools.facebook_tool import post_to_facebook
+                fb_post_id = await post_to_facebook(message=post.caption_a, image_url=post.image_url)
+                if fb_post_id:
+                    logger.info(f"[Publisher] Also posted to Facebook: {fb_post_id}")
+            except Exception as fb_err:
+                logger.warning(f"[Publisher] Facebook post failed (non-critical): {fb_err}")
+
             return True
 
         except Exception as e:
