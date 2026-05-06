@@ -803,22 +803,57 @@ async def sync_insights():
 async def test_reel(topic: str = "3 Mistakes UPSC Toppers Never Make"):
     """Generate a test reel video and return the R2 URL."""
     import traceback
+    errors = []
+
+    # Step 1: check imageio
+    try:
+        import imageio
+        errors.append(f"imageio ok: {imageio.__version__}")
+    except Exception as e:
+        errors.append(f"imageio FAILED: {e}")
+        return {"status": "error", "errors": errors}
+
+    # Step 2: check ffmpeg
+    try:
+        import imageio_ffmpeg
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+        errors.append(f"ffmpeg ok: {ffmpeg_path}")
+    except Exception as e:
+        errors.append(f"ffmpeg FAILED: {e}")
+
+    # Step 3: try creating a simple test video
+    try:
+        import tempfile, numpy as np
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            vpath = tmp.name
+        writer = imageio.get_writer(vpath, fps=24, codec="libx264",
+                                     output_params=["-pix_fmt", "yuv420p"])
+        frame = np.zeros((1920, 1080, 3), dtype=np.uint8)
+        for _ in range(24):
+            writer.append_data(frame)
+        writer.close()
+        import os
+        size = os.path.getsize(vpath)
+        os.unlink(vpath)
+        errors.append(f"test video ok: {size} bytes")
+    except Exception as e:
+        errors.append(f"test video FAILED: {e}\n{traceback.format_exc()[-300:]}")
+        return {"status": "error", "errors": errors}
+
+    # Step 4: full reel
     try:
         from src.tools.reel_video_creator import create_reel_video
         url = await create_reel_video(
-            hook=f"Stop making these UPSC mistakes! 🚨",
-            value_points=[
-                f"Mistake 1: Ignoring NCERT basics",
-                "Mistake 2: Skipping current affairs",
-                "Mistake 3: Not practicing answer writing",
-            ],
-            cta="Follow TOPPER IAS for daily UPSC tips 🎯",
+            hook="Stop making these UPSC mistakes!",
+            value_points=["Mistake 1: Ignoring NCERT", "Mistake 2: Skipping current affairs", "Mistake 3: No answer writing"],
+            cta="Follow TOPPER IAS",
             topic=topic,
-            duration_seconds=30,
+            duration_seconds=15,
         )
-        return {"status": "ok" if url else "failed", "video_url": url}
+        return {"status": "ok" if url else "failed", "video_url": url, "debug": errors}
     except Exception as e:
-        return {"status": "error", "error": str(e), "traceback": traceback.format_exc()[-500:]}
+        errors.append(f"reel FAILED: {e}\n{traceback.format_exc()[-300:]}")
+        return {"status": "error", "errors": errors}
 
 
 @app.post("/content/generate-shorts")
