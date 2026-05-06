@@ -826,8 +826,8 @@ async def test_reel(topic: str = "3 Mistakes UPSC Toppers Never Make"):
         import tempfile, numpy as np
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
             vpath = tmp.name
-        writer = imageio.get_writer(vpath, fps=24, codec="libx264",
-                                     output_params=["-pix_fmt", "yuv420p"])
+        writer = imageio.get_writer(vpath, fps=24,
+                                     output_params=["-vcodec", "libx264", "-pix_fmt", "yuv420p"])
         frame = np.zeros((1920, 1080, 3), dtype=np.uint8)
         for _ in range(24):
             writer.append_data(frame)

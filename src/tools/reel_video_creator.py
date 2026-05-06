@@ -160,8 +160,8 @@ async def create_reel_video(
             video_path = tmp.name
 
         writer = imageio.get_writer(
-            video_path, fps=fps, codec="libx264",
-            output_params=["-pix_fmt", "yuv420p", "-crf", "28"],
+            video_path, fps=fps,
+            output_params=["-vcodec", "libx264", "-pix_fmt", "yuv420p", "-crf", "28"],
         )
 
         for i, (text, subtext) in enumerate(slides):
