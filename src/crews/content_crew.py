@@ -67,35 +67,24 @@ async def run_content_crew(week_start: date) -> dict:
 
             # Step 5: generate image/video → upload to R2
             if content_type == "reel":
-                logger.info("[ContentCrew] Step 5 — Generating Reel video via MoviePy + Pollinations")
+                logger.info("[ContentCrew] Step 5 — Reel: generating script + image")
                 try:
-                    from src.tools.reel_video_creator import create_reel_video
-                    reel_script = None
-                    try:
-                        from src.agents.reel_script_agent import run_reel_script_agent
-                        reel_script = run_reel_script_agent(topic=topic, tone=tone)
-                    except Exception:
-                        pass
-                    if reel_script:
-                        image_url = await create_reel_video(
-                            hook=reel_script.hook,
-                            value_points=reel_script.value_points,
-                            cta=reel_script.cta,
-                            topic=topic,
-                            duration_seconds=reel_script.duration_seconds,
-                        )
-                    else:
-                        image_url = await create_reel_video(
-                            hook=topic,
-                            value_points=[visual_asset.overlay_text, "Study smart", "Stay consistent"],
-                            cta="Follow TOPPER IAS for daily UPSC tips",
-                            topic=topic,
-                        )
-                    if not image_url:
-                        image_url = await generate_image(prompt=visual_asset.image_prompt, topic=topic)
+                    from src.agents.reel_script_agent import run_reel_script_agent
+                    reel_script = run_reel_script_agent(topic=topic, tone=tone)
+                    # Use reel caption instead of regular caption
+                    reel_caption = (
+                        f"🎬 REEL SCRIPT\n\n"
+                        f"🪝 {reel_script.hook}\n\n"
+                        + "\n".join(f"✅ {pt}" for pt in reel_script.value_points)
+                        + f"\n\n👉 {reel_script.cta}\n\n"
+                        + " ".join(post_content.hashtags)
+                    )
+                    caption_a = reel_caption[:2200]
+                    caption_b = post_content.caption_b + "\n\n" + hashtag_block if post_content.caption_b else caption_a
+                    logger.info(f"[ContentCrew] Reel script generated, hook='{reel_script.hook[:40]}'")
                 except Exception as e:
-                    logger.warning(f"[ContentCrew] Reel video failed ({e}), falling back to image")
-                    image_url = await generate_image(prompt=visual_asset.image_prompt, topic=topic)
+                    logger.warning(f"[ContentCrew] Reel script failed ({e}), using regular caption")
+                image_url = await generate_image(prompt=visual_asset.image_prompt, topic=topic)
             else:
                 logger.info("[ContentCrew] Step 5 — Generating image via Pollinations/Stability AI → R2")
                 image_url = await generate_image(prompt=visual_asset.image_prompt, topic=topic)
