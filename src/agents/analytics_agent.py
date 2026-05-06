@@ -17,7 +17,7 @@ class AnalyticsSummary(BaseModel):
 
 def _get_llm() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash",
         google_api_key=os.getenv("GOOGLE_API_KEY"),
         temperature=0.3,
     )
@@ -60,3 +60,4 @@ def run_analytics_agent(posts_data: list[dict]) -> AnalyticsSummary:
     except Exception as e:
         logger.error(f"[AnalyticsAgent] Failed to parse response: {e}\nRaw: {raw}")
         raise
+

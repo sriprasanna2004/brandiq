@@ -21,7 +21,7 @@ class NurtureMessage(BaseModel):
 
 def _get_llm() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash",
         google_api_key=os.getenv("GOOGLE_API_KEY"),
         temperature=0.7,
     )
@@ -65,3 +65,4 @@ def run_lead_nurture_agent(lead_name: str, day_number: int, lead_status: str) ->
     except Exception as e:
         logger.error(f"[LeadNurtureAgent] Failed to parse response: {e}\nRaw: {raw}")
         raise
+

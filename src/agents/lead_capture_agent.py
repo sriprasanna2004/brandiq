@@ -29,7 +29,7 @@ class LeadScore(BaseModel):
 
 def _get_llm() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash",
         google_api_key=os.getenv("GOOGLE_API_KEY"),
         temperature=0.4,
     )
@@ -75,3 +75,4 @@ def run_lead_capture_agent(message_text: str, ig_handle: str) -> LeadScore:
     except Exception as e:
         logger.error(f"[LeadCaptureAgent] Failed to parse response: {e}\nRaw: {raw}")
         raise
+

@@ -22,7 +22,7 @@ class VisualAsset(BaseModel):
 
 def _get_llm() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash",
         google_api_key=os.getenv("GOOGLE_API_KEY"),
         temperature=0.6,
     )
@@ -63,3 +63,4 @@ def run_visual_creator_agent(caption: str, topic: str) -> VisualAsset:
     except Exception as e:
         logger.error(f"[VisualCreatorAgent] Failed to parse response: {e}\nRaw: {raw}")
         raise
+

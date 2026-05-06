@@ -21,7 +21,7 @@ class ContentPlan(BaseModel):
 
 def _get_llm() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash",
         google_api_key=os.getenv("GOOGLE_API_KEY"),
         temperature=0.7,
     )
@@ -86,3 +86,4 @@ def run_strategy_agent(week_start: Optional[date] = None) -> ContentPlan:
     except Exception as e:
         logger.error(f"[StrategyAgent] Failed to parse response: {e}\nRaw: {raw}")
         raise
+

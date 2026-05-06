@@ -15,7 +15,7 @@ class ScheduleDecision(BaseModel):
 
 def _get_llm() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash",
         google_api_key=os.getenv("GOOGLE_API_KEY"),
         temperature=0.3,
     )
@@ -84,3 +84,4 @@ def run_scheduler_agent(analytics_data: list[dict] | None = None) -> ScheduleDec
             reason="Default optimal evening slot for UPSC audience",
             expected_reach=5000,
         )
+
