@@ -855,6 +855,7 @@ async def test_reel(topic: str = "3 Mistakes UPSC Toppers Never Make"):
         errors.append(f"reel FAILED: {e}\n{traceback.format_exc()[-300:]}")
         return {"status": "error", "errors": errors}
 
+
 @app.post("/content/generate-shorts")
 async def generate_shorts(topic: str = "UPSC Preparation Tips"):
     """Generate a YouTube Shorts package for a topic."""
