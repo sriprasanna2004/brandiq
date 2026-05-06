@@ -222,6 +222,8 @@ async def create_reel_video(
 
     except Exception as e:
         logger.error(f"[ReelVideo] Failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         try:
             os.unlink(video_path)
         except Exception:
