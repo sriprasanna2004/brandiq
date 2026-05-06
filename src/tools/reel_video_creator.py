@@ -134,6 +134,7 @@ async def create_reel_video(
     fps = 24
     slide_duration = duration_seconds / len(slides_data)
 
+    video_path = None
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Generate slide images
