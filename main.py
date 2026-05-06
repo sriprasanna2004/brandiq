@@ -821,20 +821,26 @@ async def test_reel(topic: str = "3 Mistakes UPSC Toppers Never Make"):
     except Exception as e:
         errors.append(f"ffmpeg FAILED: {e}")
 
-    # Step 3: try creating a simple test video
+    # Step 3: try creating a simple test video with ffmpeg subprocess
     try:
-        import tempfile, numpy as np
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-            vpath = tmp.name
-        writer = imageio.get_writer(vpath, fps=24,
-                                     output_params=["-vcodec", "libx264", "-pix_fmt", "yuv420p"])
-        frame = np.zeros((1920, 1080, 3), dtype=np.uint8)
-        for _ in range(24):
-            writer.append_data(frame)
-        writer.close()
-        import os
-        size = os.path.getsize(vpath)
-        os.unlink(vpath)
+        import tempfile, subprocess, os
+        import imageio_ffmpeg
+        ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_img:
+            img_path = tmp_img.name
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_vid:
+            vid_path = tmp_vid.name
+        # Create a test image
+        from PIL import Image
+        img = Image.new("RGB", (1080, 1920), (7, 8, 15))
+        img.save(img_path, "JPEG")
+        # Use ffmpeg to create a 1-second video from the image
+        cmd = [ffmpeg_bin, "-y", "-loop", "1", "-i", img_path,
+               "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", vid_path]
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        size = os.path.getsize(vid_path)
+        os.unlink(img_path)
+        os.unlink(vid_path)
         errors.append(f"test video ok: {size} bytes")
     except Exception as e:
         errors.append(f"test video FAILED: {e}\n{traceback.format_exc()[-300:]}")
