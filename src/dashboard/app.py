@@ -249,8 +249,10 @@ def calendar_html():
         cls = "cal-day today" if is_today else "cal-day"
         dot = " ●" if is_today else ""
         events = cal.get(key, [])
+        count = len(events)
+        count_badge = f'<div style="font-family:DM Mono,monospace;font-size:8px;color:#4a4f72;margin-bottom:2px">{count} posts</div>' if count > 0 else ""
         ev = "".join(f'<div class="ce {TYPE_COLORS.get(e.get("platform","post"),"cy")}">{e["caption"][:16]}</div>' for e in events[:3])
-        h += f'<div class="{cls}"><div class="cal-num">{day.day}{dot}</div>{ev}</div>'
+        h += f'<div class="{cls}"><div class="cal-num">{day.day}{dot}</div>{count_badge}{ev}</div>'
     return h
 
 def jobs_html():
