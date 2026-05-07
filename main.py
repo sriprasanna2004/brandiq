@@ -1007,6 +1007,31 @@ async def fix_post_images():
     return {"updated": len(updated), "image_url": image_url}
 
 
+@app.post("/admin/backfill-ig-ids")
+async def backfill_ig_ids():
+    """Backfill Instagram post IDs for already-published posts."""
+    from sqlalchemy import text
+    from src.database import AsyncSessionLocal
+    # Known Instagram post IDs from publish logs
+    known = [
+        ("45232814-af48-477d-ab04-14a68ce1d660", "17960749851111337"),
+        ("36603817-d063-4559-83b0-4222fea1acd4", "18127081978582055"),
+    ]
+    async with AsyncSessionLocal() as db:
+        updated = 0
+        for post_id, ig_id in known:
+            try:
+                result = await db.execute(text(
+                    "UPDATE posts SET ig_post_id = :ig WHERE id = :pid AND ig_post_id IS NULL"
+                ), {"ig": ig_id, "pid": post_id})
+                if result.rowcount > 0:
+                    updated += 1
+            except Exception as e:
+                pass
+        await db.commit()
+    return {"updated": updated}
+
+
 @app.post("/admin/reschedule-posts")
 async def reschedule_posts():
     """Move all past-dated pending posts to today 7:30 PM IST."""
