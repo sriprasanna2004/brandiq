@@ -1012,24 +1012,31 @@ async def backfill_ig_ids():
     """Backfill Instagram post IDs for already-published posts."""
     from sqlalchemy import text
     from src.database import AsyncSessionLocal
-    # Known Instagram post IDs from publish logs
-    known = [
-        ("45232814-af48-477d-ab04-14a68ce1d660", "17960749851111337"),
-        ("36603817-d063-4559-83b0-4222fea1acd4", "18127081978582055"),
-    ]
     async with AsyncSessionLocal() as db:
+        # Add columns if missing
+        for col in ["ig_post_id", "fb_post_id"]:
+            try:
+                await db.execute(text(f"ALTER TABLE posts ADD COLUMN IF NOT EXISTS {col} VARCHAR"))
+                await db.commit()
+            except Exception:
+                await db.rollback()
+        # Backfill known IDs
+        known = [
+            ("45232814-af48-477d-ab04-14a68ce1d660", "17960749851111337"),
+            ("36603817-d063-4559-83b0-4222fea1acd4", "18127081978582055"),
+        ]
         updated = 0
         for post_id, ig_id in known:
             try:
                 result = await db.execute(text(
-                    "UPDATE posts SET ig_post_id = :ig WHERE id = :pid AND ig_post_id IS NULL"
+                    "UPDATE posts SET ig_post_id = :ig WHERE id = :pid::uuid AND ig_post_id IS NULL"
                 ), {"ig": ig_id, "pid": post_id})
                 if result.rowcount > 0:
                     updated += 1
             except Exception as e:
-                pass
+                await db.rollback()
         await db.commit()
-    return {"updated": updated}
+    return {"updated": updated, "columns_added": ["ig_post_id", "fb_post_id"]}
 
 
 @app.post("/admin/reschedule-posts")
