@@ -109,7 +109,7 @@ if ab5.button("▶ Run Crew", key="run_crew_main"):
 
 kpis    = get("/stats/kpis", {})
 agents  = get("/stats/agent-status", [])
-posts   = get("/posts?limit=20", [])
+posts   = get("/posts?limit=20&upcoming_only=true", [])
 leads   = get("/leads?limit=50", [])
 reach   = get("/stats/reach", [])
 funnels = get("/stats/funnels", {})
@@ -484,7 +484,7 @@ HTML = f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
       <div class="row r3">
         <div class="panel"><div class="ph"><span class="ph-title">Agent Status</span><span class="ph-meta">9/9 ACTIVE</span></div><div class="pb" style="padding:8px 14px">{agent_rows_html()}</div></div>
         <div class="panel">
-          <div class="ph"><span class="ph-title">Content Queue — Today</span><span class="ph-meta">{len(posts)} POSTS</span></div>
+          <div class="ph"><span class="ph-title">Content Queue — Today & Upcoming</span><span class="ph-meta">{len(posts)} POSTS</span></div>
           <div style="display:flex;gap:0;border-bottom:1px solid #1c1f32;padding:0 14px">
             <button onclick="filterQueue('all',this)" class="qtab qtab-on" style="background:none;border:none;color:#00e5c3;font-family:DM Sans,sans-serif;font-size:11px;font-weight:600;padding:8px 12px;cursor:pointer;border-bottom:2px solid #00e5c3;margin-bottom:-1px">All</button>
             <button onclick="filterQueue('instagram',this)" class="qtab" style="background:none;border:none;color:#4a4f72;font-family:DM Sans,sans-serif;font-size:11px;font-weight:600;padding:8px 12px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px">Instagram</button>

@@ -141,14 +141,18 @@ async def trigger_lead_crew(body: LeadTaskRequest):
 
 
 @app.get("/posts")
-async def list_posts(status: str = None, limit: int = 20):
+async def list_posts(status: str = None, limit: int = 20, upcoming_only: bool = False):
     from sqlalchemy import select
     from src.database import AsyncSessionLocal
     from src.models import Post, PostStatus
+    from datetime import timezone
     async with AsyncSessionLocal() as db:
         q = select(Post).order_by(Post.scheduled_at.desc()).limit(limit)
         if status:
             q = q.where(Post.status == PostStatus(status))
+        if upcoming_only:
+            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            q = q.where(Post.scheduled_at >= today_start)
         result = await db.execute(q)
         posts = result.scalars().all()
         return [
