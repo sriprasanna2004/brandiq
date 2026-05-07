@@ -95,6 +95,8 @@ class Post(Base):
     scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[PostStatus] = mapped_column(SAEnum(PostStatus), default=PostStatus.pending)
+    ig_post_id: Mapped[str | None] = mapped_column(String, nullable=True)  # Instagram media ID
+    fb_post_id: Mapped[str | None] = mapped_column(String, nullable=True)  # Facebook post ID
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     analytics: Mapped[list["PostAnalytics"]] = relationship(back_populates="post")

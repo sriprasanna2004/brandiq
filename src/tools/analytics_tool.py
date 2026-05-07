@@ -78,14 +78,14 @@ async def sync_post_analytics() -> int:
     updated = 0
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(Post).where(Post.status == PostStatus.posted).order_by(Post.posted_at.desc()).limit(20)
+            select(Post).where(Post.status == PostStatus.posted, Post.ig_post_id.isnot(None)).order_by(Post.posted_at.desc()).limit(20)
         )
         posts = result.scalars().all()
-        logger.info(f"[Analytics] Syncing insights for {len(posts)} posts")
+        logger.info(f"[Analytics] Syncing insights for {len(posts)} posts with ig_post_id")
 
         for post in posts:
             try:
-                insights = await get_post_insights(str(post.id))
+                insights = await get_post_insights(post.ig_post_id)  # use real Instagram ID
                 if not insights:
                     continue
 

@@ -43,6 +43,7 @@ async def publish_pending_posts() -> list[str]:
 
                 post.status = PostStatus.posted
                 post.posted_at = datetime.now(timezone.utc)
+                post.ig_post_id = ig_post_id
                 await db.commit()
 
                 published_ids.append(ig_post_id)
